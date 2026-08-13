@@ -1,41 +1,72 @@
-using System.ComponentModel;
 using System.Diagnostics;
-using System.IO;
-using System.Runtime.InteropServices;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Interop;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using Forms = System.Windows.Forms;
+using Microsoft.UI.Windowing;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
+using Windows.ApplicationModel.DataTransfer;
+using Windows.Graphics;
+using Windows.Storage.Streams;
 using WallhavenService.Models;
 using WallhavenService.Services;
 
 namespace WallhavenService;
 
-public partial class MainWindow : Window
+public sealed partial class MainWindow : Window
 {
     private readonly WallpaperOrchestrator _orchestrator;
-    private readonly Forms.NotifyIcon _trayIcon;
-    private readonly Forms.ToolStripMenuItem _saveCurrentMenuItem;
     private readonly NotificationService _notificationService;
+    private readonly TrayIconService _trayIcon;
+    private readonly Func<Task> _shutdownAsync;
+    private readonly HttpClient _previewClient = new();
+    private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _countdownTimer;
+    private CancellationTokenSource? _previewCancellation;
     private WallpaperItem? _displayedWallpaper;
     private bool _allowClose;
+    private bool _started;
 
-    private const int DwmwaUseImmersiveDarkMode = 20;
-    private const int DwmwaWindowCornerPreference = 33;
-    private const int DwmwaSystemBackdropType = 38;
-    private const int DwmsbtMainWindow = 2;
-    private const int DwmcpRound = 2;
-
-    [DllImport("dwmapi.dll")]
-    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int valueSize);
-
-    public MainWindow(WallpaperOrchestrator orchestrator)
+    public MainWindow(WallpaperOrchestrator orchestrator, Func<Task> shutdownAsync)
     {
         InitializeComponent();
-        SourceInitialized += (_, _) => ApplyWindows11WindowStyle();
         _orchestrator = orchestrator;
+        _shutdownAsync = shutdownAsync;
+        _notificationService = new NotificationService(DispatcherQueue);
+        _trayIcon = new TrayIconService();
+        _countdownTimer = DispatcherQueue.CreateTimer();
+        _countdownTimer.Interval = TimeSpan.FromSeconds(1);
+        _countdownTimer.Tick += (_, _) => UpdateRotationCountdown();
+        _countdownTimer.Start();
+        ConfigureWindow();
+        SubscribeEvents();
+        LoadSettings();
+        UpdateStatus("等待任务");
+        RootGrid.Loaded += MainWindow_OnLoaded;
+    }
+
+    private void ConfigureWindow()
+    {
+        Title = "Wallhaven 壁纸服务";
+        SystemBackdrop = new MicaBackdrop();
+        AppWindow.Resize(new SizeInt32(1440, 900));
+        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "App.ico"));
+        AppWindow.Closing += AppWindow_OnClosing;
+        CenterWindow();
+    }
+
+    private void CenterWindow()
+    {
+        var displayArea = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary);
+        if (displayArea is null)
+            return;
+
+        var workArea = displayArea.WorkArea;
+        var x = workArea.X + Math.Max(0, (workArea.Width - AppWindow.Size.Width) / 2);
+        var y = workArea.Y + Math.Max(0, (workArea.Height - AppWindow.Size.Height) / 2);
+        AppWindow.Move(new PointInt32(x, y));
+    }
+
+    private void SubscribeEvents()
+    {
         _orchestrator.StatusChanged += Orchestrator_OnStatusChanged;
         _orchestrator.SearchStarting += Orchestrator_OnSearchStarting;
         _orchestrator.NextSearchKeywordConsumed += Orchestrator_OnNextSearchKeywordConsumed;
@@ -44,48 +75,12 @@ public partial class MainWindow : Window
         _orchestrator.SearchRetryScheduled += Orchestrator_OnSearchRetryScheduled;
         _orchestrator.SearchFailed += Orchestrator_OnSearchFailed;
         _orchestrator.AutoRotationDisabled += Orchestrator_OnAutoRotationDisabled;
-        _notificationService = new NotificationService();
-        _saveCurrentMenuItem = new Forms.ToolStripMenuItem("保存当前图片")
-        {
-            Enabled = _orchestrator.HasCurrentWallpaper
-        };
-        _saveCurrentMenuItem.Click += (_, _) => SaveCurrentWallpaper();
 
-        _trayIcon = new Forms.NotifyIcon
-        {
-            Text = "Wallhaven 壁纸服务",
-            Icon = System.Drawing.SystemIcons.Application,
-            Visible = true,
-            ContextMenuStrip = CreateTrayMenu()
-        };
-        _trayIcon.DoubleClick += (_, _) => ShowFromTray();
-
-        LoadSettings();
-        UpdateStatus("等待任务");
-        Loaded += MainWindow_OnLoaded;
-    }
-
-    private void ApplyWindows11WindowStyle()
-    {
-        var hwnd = new WindowInteropHelper(this).Handle;
-        var lightMode = 0;
-        var roundedCorners = DwmcpRound;
-        var micaBackdrop = DwmsbtMainWindow;
-
-        DwmSetWindowAttribute(hwnd, DwmwaUseImmersiveDarkMode, ref lightMode, sizeof(int));
-        DwmSetWindowAttribute(hwnd, DwmwaWindowCornerPreference, ref roundedCorners, sizeof(int));
-        DwmSetWindowAttribute(hwnd, DwmwaSystemBackdropType, ref micaBackdrop, sizeof(int));
-    }
-
-    private Forms.ContextMenuStrip CreateTrayMenu()
-    {
-        var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("打开设置", null, (_, _) => ShowFromTray());
-        menu.Items.Add("立即抓取", null, async (_, _) => await RunAsync());
-        menu.Items.Add(_saveCurrentMenuItem);
-        menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add("退出", null, (_, _) => ExitApplication());
-        return menu;
+        _trayIcon.OpenRequested += (_, _) => Enqueue(ShowFromTray);
+        _trayIcon.RunNowRequested += (_, _) => Enqueue(async () => await RunAsync());
+        _trayIcon.SaveCurrentRequested += (_, _) => Enqueue(SaveCurrentWallpaper);
+        _trayIcon.ExitRequested += (_, _) => Enqueue(async () => await ExitApplicationAsync());
+        _trayIcon.SetSaveEnabled(_orchestrator.HasCurrentWallpaper);
     }
 
     private void LoadSettings()
@@ -100,31 +95,49 @@ public partial class MainWindow : Window
         AnimeBox.IsChecked = settings.IncludeAnime;
         PeopleBox.IsChecked = settings.IncludePeople;
         MinimumResolutionBox.Text = settings.MinimumResolution;
-        AspectRatioBox.SelectedItem = AspectRatioBox.Items
-            .OfType<ComboBoxItem>()
-            .FirstOrDefault(item => string.Equals(item.Tag as string, settings.AspectRatio, StringComparison.Ordinal))
-            ?? AspectRatioBox.Items[0];
+        SelectAspectRatio(settings.AspectRatio);
         ScheduleEnabledBox.IsChecked = settings.ScheduleEnabled;
         IntervalBox.Text = settings.IntervalMinutes.ToString();
         UpdateNsfwAvailability();
+        UpdateRotationCountdown();
+    }
+
+    private void SelectAspectRatio(string aspectRatio)
+    {
+        for (var index = 0; index < AspectRatioBox.Items.Count; index++)
+        {
+            if (AspectRatioBox.Items[index] is ComboBoxItem item &&
+                string.Equals(item.Tag as string, aspectRatio, StringComparison.Ordinal))
+            {
+                AspectRatioBox.SelectedIndex = index;
+                return;
+            }
+        }
+
+        AspectRatioBox.SelectedIndex = 0;
+    }
+
+    private async void MainWindow_OnLoaded(object sender, RoutedEventArgs e)
+    {
+        if (_started)
+            return;
+
+        _started = true;
+        await Task.Run(() => _orchestrator.StartAsync());
+        UpdateRotationCountdown();
     }
 
     private async void RunButton_OnClick(object sender, RoutedEventArgs e) => await RunAsync();
 
-    private async void MainWindow_OnLoaded(object sender, RoutedEventArgs e)
-    {
-        await _orchestrator.StartAsync();
-    }
-
     private async Task RunAsync()
     {
-        if (!SaveSettings(false))
+        if (!await SaveSettingsAsync(false))
             return;
 
         RunButton.IsEnabled = false;
         try
         {
-            await _orchestrator.RunNowAsync();
+            await Task.Run(() => _orchestrator.RunNowAsync());
         }
         finally
         {
@@ -132,23 +145,25 @@ public partial class MainWindow : Window
         }
     }
 
-    private void SaveButton_OnClick(object sender, RoutedEventArgs e) => SaveSettings(true);
+    private async void SaveButton_OnClick(object sender, RoutedEventArgs e) => await SaveSettingsAsync(true);
 
-    private bool SaveSettings(bool showMessage)
+    private async Task<bool> SaveSettingsAsync(bool showMessage)
     {
         if (!int.TryParse(IntervalBox.Text, out var interval) || interval < 1)
         {
-            System.Windows.MessageBox.Show("间隔必须是大于 0 的整数分钟。", "设置无效", MessageBoxButton.OK, MessageBoxImage.Warning);
+            await ShowValidationMessageAsync("间隔必须是大于 0 的整数分钟。");
             return false;
         }
+
         if (SfwBox.IsChecked != true && SketchyBox.IsChecked != true && NsfwBox.IsChecked != true)
         {
-            System.Windows.MessageBox.Show("请至少选择一种内容纯度。", "设置无效", MessageBoxButton.OK, MessageBoxImage.Warning);
+            await ShowValidationMessageAsync("请至少选择一种内容纯度。");
             return false;
         }
+
         if (GeneralBox.IsChecked != true && AnimeBox.IsChecked != true && PeopleBox.IsChecked != true)
         {
-            System.Windows.MessageBox.Show("请至少选择一种壁纸分类。", "设置无效", MessageBoxButton.OK, MessageBoxImage.Warning);
+            await ShowValidationMessageAsync("请至少选择一种壁纸分类。");
             return false;
         }
 
@@ -170,13 +185,25 @@ public partial class MainWindow : Window
             ScheduleEnabled = ScheduleEnabledBox.IsChecked == true,
             IntervalMinutes = interval
         };
+
         _orchestrator.UpdateSettings(settings);
         _orchestrator.SetNextSearchKeyword(NextSearchKeywordBox.Text);
+        UpdateRotationCountdown();
         if (showMessage)
-        {
             UpdateStatus("设置已保存，定时任务已应用");
-        }
         return true;
+    }
+
+    private async Task ShowValidationMessageAsync(string message)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = "设置无效",
+            Content = message,
+            CloseButtonText = "确定",
+            XamlRoot = RootGrid.XamlRoot
+        };
+        await dialog.ShowAsync();
     }
 
     private void ApiKeyBox_OnPasswordChanged(object sender, RoutedEventArgs e) => UpdateNsfwAvailability();
@@ -196,25 +223,25 @@ public partial class MainWindow : Window
         {
             var savedPath = _orchestrator.SaveCurrentWallpaper();
             if (savedPath is not null)
-                _trayIcon.ShowBalloonTip(2500, "Wallhaven 壁纸服务", $"已保存到图片目录：{Path.GetFileName(savedPath)}", Forms.ToolTipIcon.Info);
+                UpdateStatus($"已保存到图片目录：{Path.GetFileName(savedPath)}");
         }
         catch (Exception ex)
         {
             UpdateStatus($"保存失败：{ex.Message}");
-            _trayIcon.ShowBalloonTip(3500, "Wallhaven 壁纸服务", $"保存失败：{ex.Message}", Forms.ToolTipIcon.Error);
         }
     }
 
-    private void Orchestrator_OnStatusChanged(object? sender, string status)
-    {
-        Dispatcher.Invoke(() =>
+    private void Orchestrator_OnStatusChanged(object? sender, string status) =>
+        Enqueue(() =>
         {
             UpdateStatus(status);
-            _saveCurrentMenuItem.Enabled = _orchestrator.HasCurrentWallpaper;
-            if (status.StartsWith("抓取失败", StringComparison.Ordinal))
-                _trayIcon.ShowBalloonTip(3500, "Wallhaven 壁纸服务", status, Forms.ToolTipIcon.Error);
+            var canSave = _orchestrator.HasCurrentWallpaper;
+            _trayIcon.SetSaveEnabled(canSave);
+            SaveImageButton.IsEnabled = canSave;
+            _trayIcon.SetToolTip(status.StartsWith("抓取失败", StringComparison.Ordinal)
+                ? "Wallhaven 壁纸服务 - 抓取失败"
+                : "Wallhaven 壁纸服务");
         });
-    }
 
     private void Orchestrator_OnSearchStarting(object? sender, string searchTag)
     {
@@ -224,12 +251,12 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            Dispatcher.Invoke(() => UpdateStatus($"搜索通知发送失败：{ex.Message}"));
+            Enqueue(() => UpdateStatus($"搜索通知发送失败：{ex.Message}"));
         }
     }
 
     private void Orchestrator_OnNextSearchKeywordConsumed(object? sender, EventArgs e) =>
-        Dispatcher.Invoke(NextSearchKeywordBox.Clear);
+        Enqueue(() => NextSearchKeywordBox.Text = string.Empty);
 
     private void Orchestrator_OnWallpaperUpdated(object? sender, WallpaperItem wallpaper)
     {
@@ -239,35 +266,26 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            Dispatcher.Invoke(() => UpdateStatus($"结果通知发送失败：{ex.Message}"));
+            Enqueue(() => UpdateStatus($"结果通知发送失败：{ex.Message}"));
         }
 
-        Dispatcher.Invoke(() =>
+        Enqueue(() =>
         {
-            try
-            {
-                ShowCurrentWallpaper(wallpaper);
-            }
-            catch (Exception ex)
-            {
-                UpdateStatus($"壁纸预览加载失败：{ex.Message}");
-            }
+            UpdateWallpaperDetails(wallpaper);
+            _trayIcon.SetSaveEnabled(true);
         });
+        _ = LoadWallpaperPreviewAsync(wallpaper, "壁纸预览加载失败");
     }
 
-    private void Orchestrator_OnWallpaperRestored(object? sender, WallpaperItem wallpaper) =>
-        Dispatcher.Invoke(() =>
+    private void Orchestrator_OnWallpaperRestored(object? sender, WallpaperItem wallpaper)
+    {
+        Enqueue(() =>
         {
-            try
-            {
-                ShowCurrentWallpaper(wallpaper);
-                _saveCurrentMenuItem.Enabled = true;
-            }
-            catch (Exception ex)
-            {
-                UpdateStatus($"历史壁纸预览加载失败：{ex.Message}");
-            }
+            UpdateWallpaperDetails(wallpaper);
+            _trayIcon.SetSaveEnabled(true);
         });
+        _ = LoadWallpaperPreviewAsync(wallpaper, "历史壁纸预览加载失败");
+    }
 
     private void Orchestrator_OnSearchFailed(object? sender, SearchFailure failure)
     {
@@ -277,7 +295,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            Dispatcher.Invoke(() => UpdateStatus($"失败通知发送失败：{ex.Message}"));
+            Enqueue(() => UpdateStatus($"失败通知发送失败：{ex.Message}"));
         }
     }
 
@@ -289,14 +307,43 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            Dispatcher.Invoke(() => UpdateStatus($"重试通知发送失败：{ex.Message}"));
+            Enqueue(() => UpdateStatus($"重试通知发送失败：{ex.Message}"));
         }
     }
 
     private void Orchestrator_OnAutoRotationDisabled(object? sender, EventArgs e) =>
-        Dispatcher.Invoke(() => ScheduleEnabledBox.IsChecked = false);
+        Enqueue(() =>
+        {
+            ScheduleEnabledBox.IsChecked = false;
+            UpdateRotationCountdown();
+        });
 
-    private void ShowCurrentWallpaper(WallpaperItem wallpaper)
+    private void UpdateRotationCountdown()
+    {
+        if (!_orchestrator.Settings.ScheduleEnabled)
+        {
+            RotationCountdownPanel.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        RotationCountdownPanel.Visibility = Visibility.Visible;
+        var nextRotation = _orchestrator.NextRotationUtc;
+        if (nextRotation is null)
+        {
+            RotationCountdownText.Text = "正在准备…";
+            return;
+        }
+
+        var remaining = nextRotation.Value - DateTimeOffset.UtcNow;
+        if (remaining < TimeSpan.Zero)
+            remaining = TimeSpan.Zero;
+
+        RotationCountdownText.Text = remaining.TotalDays >= 1
+            ? $"{(int)remaining.TotalDays} 天 {remaining.Hours:00}:{remaining.Minutes:00}:{remaining.Seconds:00}"
+            : $"{(int)remaining.TotalHours:00}:{remaining.Minutes:00}:{remaining.Seconds:00}";
+    }
+
+    private void UpdateWallpaperDetails(WallpaperItem wallpaper)
     {
         _displayedWallpaper = wallpaper;
         CurrentTagText.Text = wallpaper.SearchTag;
@@ -305,30 +352,92 @@ public partial class MainWindow : Window
         CurrentPurityText.Text = wallpaper.Purity.ToUpperInvariant();
         CurrentPurityText.Foreground = wallpaper.Purity.ToLowerInvariant() switch
         {
-            "sfw" => new SolidColorBrush(System.Windows.Media.Color.FromRgb(31, 138, 75)),
-            "sketchy" => new SolidColorBrush(System.Windows.Media.Color.FromRgb(190, 112, 0)),
-            "nsfw" => new SolidColorBrush(System.Windows.Media.Color.FromRgb(201, 48, 44)),
-            _ => System.Windows.SystemColors.GrayTextBrush
+            "sfw" => new SolidColorBrush(Windows.UI.Color.FromArgb(255, 31, 138, 75)),
+            "sketchy" => new SolidColorBrush(Windows.UI.Color.FromArgb(255, 190, 112, 0)),
+            "nsfw" => new SolidColorBrush(Windows.UI.Color.FromArgb(255, 201, 48, 44)),
+            _ => new SolidColorBrush(Windows.UI.Color.FromArgb(255, 97, 97, 97))
         };
-        CurrentPurityText.FontWeight = FontWeights.SemiBold;
-
-        var image = new BitmapImage();
-        image.BeginInit();
-        image.CacheOption = BitmapCacheOption.OnLoad;
-        image.UriSource = new Uri(wallpaper.ThumbnailUrl);
-        image.EndInit();
-        CurrentWallpaperImage.Source = image;
-        WallpaperEmptyText.Visibility = Visibility.Collapsed;
+        CurrentPurityText.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
+        CurrentWallpaperImage.Source = null;
+        WallpaperEmptyText.Text = "正在加载预览…";
+        WallpaperEmptyText.Visibility = Visibility.Visible;
+        SaveImageButton.IsEnabled = _orchestrator.HasCurrentWallpaper;
         CopyUrlButton.IsEnabled = true;
         OpenUrlButton.IsEnabled = true;
     }
+
+    private async Task LoadWallpaperPreviewAsync(WallpaperItem wallpaper, string failurePrefix)
+    {
+        var cancellation = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref _previewCancellation, cancellation);
+        previous?.Cancel();
+
+        try
+        {
+            var imageBytes = await _previewClient
+                .GetByteArrayAsync(wallpaper.ThumbnailUrl, cancellation.Token)
+                .ConfigureAwait(false);
+
+            await EnqueueAsync(async () =>
+            {
+                if (cancellation.IsCancellationRequested || _displayedWallpaper?.Id != wallpaper.Id)
+                    return;
+
+                using var stream = new InMemoryRandomAccessStream();
+                using (var writer = new DataWriter(stream))
+                {
+                    writer.WriteBytes(imageBytes);
+                    await writer.StoreAsync();
+                    writer.DetachStream();
+                }
+
+                stream.Seek(0);
+                var image = new BitmapImage
+                {
+                    DecodePixelWidth = 480
+                };
+                await image.SetSourceAsync(stream);
+
+                if (cancellation.IsCancellationRequested || _displayedWallpaper?.Id != wallpaper.Id)
+                    return;
+
+                CurrentWallpaperImage.Source = image;
+                WallpaperEmptyText.Visibility = Visibility.Collapsed;
+            });
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            Enqueue(() =>
+            {
+                if (_displayedWallpaper?.Id == wallpaper.Id)
+                {
+                    WallpaperEmptyText.Text = "预览加载失败";
+                    WallpaperEmptyText.Visibility = Visibility.Visible;
+                }
+                UpdateStatus($"{failurePrefix}：{ex.Message}");
+            });
+        }
+        finally
+        {
+            Interlocked.CompareExchange(ref _previewCancellation, null, cancellation);
+            cancellation.Dispose();
+        }
+    }
+
+    private void SaveImageButton_OnClick(object sender, RoutedEventArgs e) => SaveCurrentWallpaper();
 
     private void CopyUrlButton_OnClick(object sender, RoutedEventArgs e)
     {
         if (_displayedWallpaper is null)
             return;
 
-        System.Windows.Clipboard.SetText(_displayedWallpaper.SourceUrl);
+        var package = new DataPackage();
+        package.SetText(_displayedWallpaper.SourceUrl);
+        Clipboard.SetContent(package);
+        Clipboard.Flush();
         UpdateStatus("壁纸页面 URL 已复制");
     }
 
@@ -343,34 +452,75 @@ public partial class MainWindow : Window
     private void UpdateStatus(string status)
     {
         StatusText.Text = status;
-        LogTextBox.AppendText($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {status}{Environment.NewLine}");
-        LogTextBox.ScrollToEnd();
+        LogTextBox.Text += $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {status}{Environment.NewLine}";
+        LogTextBox.Select(LogTextBox.Text.Length, 0);
     }
 
     private void ShowFromTray()
     {
-        Show();
-        WindowState = WindowState.Normal;
+        AppWindow.Show();
+        if (AppWindow.Presenter is OverlappedPresenter presenter)
+            presenter.Restore();
         Activate();
     }
 
-    private void ExitApplication()
+    private void AppWindow_OnClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
+        if (_allowClose)
+            return;
+
+        args.Cancel = true;
+        AppWindow.Hide();
+        UpdateStatus("窗口已隐藏，程序继续在系统托盘运行");
+    }
+
+    private async Task ExitApplicationAsync()
+    {
+        if (_allowClose)
+            return;
+
         _allowClose = true;
-        _trayIcon.Visible = false;
+        _countdownTimer.Stop();
+        _previewCancellation?.Cancel();
+        _previewClient.Dispose();
         _trayIcon.Dispose();
         _notificationService.Dispose();
+        await _shutdownAsync();
         Close();
     }
 
-    protected override void OnClosing(CancelEventArgs e)
+    private void Enqueue(Action action)
     {
-        if (!_allowClose)
-        {
-            e.Cancel = true;
-            Hide();
-            _trayIcon.ShowBalloonTip(1500, "Wallhaven 壁纸服务", "程序已在系统托盘中继续运行。", Forms.ToolTipIcon.Info);
-        }
-        base.OnClosing(e);
+        DispatcherQueue.TryEnqueue(() => action());
     }
+
+    private void Enqueue(Func<Task> action)
+    {
+        DispatcherQueue.TryEnqueue(async () => await action());
+    }
+
+    private Task EnqueueAsync(Func<Task> action)
+    {
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!DispatcherQueue.TryEnqueue(async () =>
+            {
+                try
+                {
+                    await action();
+                    completion.TrySetResult();
+                }
+                catch (Exception ex)
+                {
+                    completion.TrySetException(ex);
+                }
+            }))
+        {
+            completion.TrySetCanceled();
+        }
+
+        return completion.Task;
+    }
+
+    public void ReportUnhandledException(Exception exception) =>
+        Enqueue(() => UpdateStatus($"未处理错误：{exception.Message}"));
 }

@@ -22,6 +22,7 @@ public sealed class WallpaperOrchestrator : IAsyncDisposable
     private readonly DesktopWallpaperService _wallpaperService = new();
     private readonly SemaphoreSlim _runLock = new(1, 1);
     private readonly object _nextSearchKeywordLock = new();
+    private readonly object _scheduleStateLock = new();
     private readonly CancellationTokenSource _shutdown = new();
     private CancellationTokenSource _schedulerCancellation = new();
     private Task? _schedulerTask;
@@ -32,6 +33,8 @@ public sealed class WallpaperOrchestrator : IAsyncDisposable
     private string _nextSearchKeyword = string.Empty;
     private int _started;
     private int _consecutiveFailures;
+    private long _scheduleVersion;
+    private DateTimeOffset? _nextRotationUtc;
 
     public event EventHandler<string>? StatusChanged;
     public event EventHandler<string>? SearchStarting;
@@ -43,6 +46,14 @@ public sealed class WallpaperOrchestrator : IAsyncDisposable
     public event EventHandler? AutoRotationDisabled;
 
     public AppSettings Settings => _settings;
+    public DateTimeOffset? NextRotationUtc
+    {
+        get
+        {
+            lock (_scheduleStateLock)
+                return _nextRotationUtc;
+        }
+    }
     public bool HasCurrentWallpaper =>
         _currentWallpaper is not null &&
         _currentWallpaperPath is not null &&
@@ -317,30 +328,55 @@ public sealed class WallpaperOrchestrator : IAsyncDisposable
         _schedulerCancellation.Cancel();
         _schedulerCancellation.Dispose();
         _schedulerCancellation = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
-        _schedulerTask = TryValidateSettings(_settings, out _) && _settings.ScheduleEnabled
-            ? RunSchedulerAsync(initialDelay, _schedulerCancellation.Token)
-            : Task.CompletedTask;
+        var scheduleVersion = Interlocked.Increment(ref _scheduleVersion);
+        var shouldRun = TryValidateSettings(_settings, out _) && _settings.ScheduleEnabled;
+        if (!shouldRun)
+        {
+            SetNextRotationUtc(scheduleVersion, null);
+            _schedulerTask = Task.CompletedTask;
+            return;
+        }
+
+        _schedulerTask = RunSchedulerAsync(initialDelay, scheduleVersion, _schedulerCancellation.Token);
     }
 
-    private async Task RunSchedulerAsync(TimeSpan initialDelay, CancellationToken cancellationToken)
+    private async Task RunSchedulerAsync(
+        TimeSpan initialDelay,
+        long scheduleVersion,
+        CancellationToken cancellationToken)
     {
-        if (!_settings.ScheduleEnabled)
-            return;
-
         try
         {
-            if (initialDelay > TimeSpan.Zero)
-                await Task.Delay(initialDelay, cancellationToken);
+            var delay = initialDelay < TimeSpan.Zero ? TimeSpan.Zero : initialDelay;
+            while (!cancellationToken.IsCancellationRequested && _settings.ScheduleEnabled)
+            {
+                SetNextRotationUtc(scheduleVersion, DateTimeOffset.UtcNow + delay);
+                if (delay > TimeSpan.Zero)
+                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
 
-            if (!cancellationToken.IsCancellationRequested)
-                await RunNowAsync(cancellationToken);
+                SetNextRotationUtc(scheduleVersion, null);
+                if (cancellationToken.IsCancellationRequested || !_settings.ScheduleEnabled)
+                    break;
 
-            using var timer = new PeriodicTimer(GetRotationInterval());
-            while (await timer.WaitForNextTickAsync(cancellationToken))
-                await RunNowAsync(cancellationToken);
+                await RunNowAsync(cancellationToken).ConfigureAwait(false);
+                delay = GetRotationInterval();
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+        }
+        finally
+        {
+            SetNextRotationUtc(scheduleVersion, null);
+        }
+    }
+
+    private void SetNextRotationUtc(long scheduleVersion, DateTimeOffset? value)
+    {
+        lock (_scheduleStateLock)
+        {
+            if (scheduleVersion == Volatile.Read(ref _scheduleVersion))
+                _nextRotationUtc = value;
         }
     }
 

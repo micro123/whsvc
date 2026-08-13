@@ -1,25 +1,40 @@
-using System.Windows;
+using Microsoft.UI.Xaml;
 using WallhavenService.Services;
 
 namespace WallhavenService;
 
-public partial class App : System.Windows.Application
+public partial class App : Application
 {
     private MainWindow? _mainWindow;
+    private bool _shutdownStarted;
 
     public WallpaperOrchestrator Orchestrator { get; } = new();
 
-    protected override void OnStartup(StartupEventArgs e)
+    public App()
     {
-        base.OnStartup(e);
-        _mainWindow = new MainWindow(Orchestrator);
-        MainWindow = _mainWindow;
-        _mainWindow.Show();
+        InitializeComponent();
+        UnhandledException += OnUnhandledException;
     }
 
-    protected override async void OnExit(ExitEventArgs e)
+    protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        _mainWindow = new MainWindow(Orchestrator, ShutdownAsync);
+        _mainWindow.Activate();
+    }
+
+    private void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
+    {
+        e.Handled = true;
+        _mainWindow?.ReportUnhandledException(e.Exception);
+    }
+
+    private async Task ShutdownAsync()
+    {
+        if (_shutdownStarted)
+            return;
+
+        _shutdownStarted = true;
         await Orchestrator.DisposeAsync();
-        base.OnExit(e);
+        Exit();
     }
 }

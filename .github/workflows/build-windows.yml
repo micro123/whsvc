@@ -1,0 +1,81 @@
+name: Build Windows self-contained
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: "10.0.x"
+  PROJECT_PATH: "WallhavenService.csproj"
+  RUNTIME_IDENTIFIER: "win-x64"
+  PUBLISH_DIRECTORY: "${{ github.workspace }}\\artifacts\\publish\\win-x64"
+
+jobs:
+  build:
+    name: Build Windows x64 package
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        shell: pwsh
+        run: dotnet restore $env:PROJECT_PATH --runtime $env:RUNTIME_IDENTIFIER
+
+      - name: Publish self-contained application
+        shell: pwsh
+        run: >-
+          dotnet publish $env:PROJECT_PATH
+          --configuration Release
+          --runtime $env:RUNTIME_IDENTIFIER
+          --self-contained true
+          --no-restore
+          --output $env:PUBLISH_DIRECTORY
+          -p:Platform=x64
+          -p:WindowsAppSDKSelfContained=true
+          -p:PublishSingleFile=false
+
+      - name: Create ZIP package
+        id: package
+        shell: pwsh
+        run: |
+          $archiveName = "WallhavenService-$env:RUNTIME_IDENTIFIER.zip"
+          $archivePath = Join-Path "${{ github.workspace }}\artifacts" $archiveName
+
+          if (Test-Path -LiteralPath $archivePath) {
+            Remove-Item -LiteralPath $archivePath -Force
+          }
+
+          Compress-Archive `
+            -Path (Join-Path $env:PUBLISH_DIRECTORY '*') `
+            -DestinationPath $archivePath `
+            -CompressionLevel Optimal
+
+          "archive_path=$archivePath" >> $env:GITHUB_OUTPUT
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: WallhavenService-win-x64-${{ github.run_number }}
+          path: ${{ steps.package.outputs.archive_path }}
+          if-no-files-found: error
+          retention-days: 30

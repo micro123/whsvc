@@ -1,62 +1,45 @@
-<Window x:Class="WallhavenService.MainWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Wallhaven 壁纸服务"
-        Width="1120"
-        Height="720"
-        MinWidth="940"
-        MinHeight="640"
-        TextOptions.TextRenderingMode="ClearType"
-        TextOptions.TextFormattingMode="Display"
-        WindowStartupLocation="CenterScreen">
-    <Window.Resources>
-        <Style x:Key="PanelStyle" TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="6" />
-            <Setter Property="Padding" Value="16" />
-        </Style>
-    </Window.Resources>
-
-    <Grid>
+<Window
+    x:Class="WallhavenService.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+<Grid x:Name="RootGrid" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
-            <Grid Margin="24,16">
+        <Border Grid.Row="0" Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+            <Grid Margin="28,18">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <StackPanel>
-                    <TextBlock Text="Wallhaven 壁纸服务" FontSize="23" FontWeight="SemiBold" />
-                    <TextBlock Text="自动发现并轮换桌面壁纸" Foreground="{StaticResource MutedTextBrush}" Margin="0,3,0,0" />
+                    <TextBlock Text="Wallhaven 壁纸服务" FontSize="24" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                    <TextBlock Text="自动发现、下载并定时轮换高质量桌面壁纸" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,4,0,0" />
                 </StackPanel>
-                <Button x:Name="RunButton" Grid.Column="1" Content="立即抓取" Width="116" Style="{StaticResource PrimaryButtonStyle}" Click="RunButton_OnClick" />
+                <Button x:Name="RunButton" Grid.Column="1" Content="立即抓取" Width="124" Style="{StaticResource AccentButtonStyle}" Click="RunButton_OnClick" />
             </Grid>
         </Border>
 
-        <Grid Grid.Row="1" Margin="24,16">
+        <Grid Grid.Row="1" Margin="28,20">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="3*" MinWidth="540" />
-                <ColumnDefinition Width="20" />
-                <ColumnDefinition Width="2*" MinWidth="360" />
+                <ColumnDefinition Width="24" />
+                <ColumnDefinition Width="520" />
             </Grid.ColumnDefinitions>
 
-            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <ScrollViewer Grid.Column="0" ScrollViewer.VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel>
                     <Border Style="{StaticResource PanelStyle}">
                         <StackPanel>
                             <TextBlock Text="搜索设置" Style="{StaticResource SectionTitleStyle}" />
-                            <TextBlock Text="配置 Wallhaven 的搜索范围和过滤条件" Foreground="{StaticResource MutedTextBrush}" Margin="0,3,0,14" />
+                            <TextBlock Text="配置 Wallhaven 的搜索范围和过滤条件" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,4,0,18" />
 
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="126" />
+                                    <ColumnDefinition Width="118" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="122" />
                                 </Grid.ColumnDefinitions>
@@ -74,7 +57,7 @@
                                 <TextBlock Grid.Row="0" Grid.Column="2" Text="NSFW 内容需要" Style="{StaticResource FieldLabelStyle}" Margin="0,0,0,10" />
 
                                 <TextBlock Grid.Row="1" Text="关键词列表" Style="{StaticResource FieldLabelStyle}" VerticalAlignment="Top" Margin="0,8,0,0" />
-                                <TextBox x:Name="KeywordsBox" Grid.Row="1" Grid.Column="1" Margin="0,0,12,10" Height="76" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top" />
+                                <TextBox x:Name="KeywordsBox" Grid.Row="1" Grid.Column="1" Margin="0,0,12,10" Height="86" AcceptsReturn="True" ScrollViewer.VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top" />
                                 <TextBlock Grid.Row="1" Grid.Column="2" Text="每行一个，每轮随机" Style="{StaticResource FieldLabelStyle}" VerticalAlignment="Top" Margin="0,8,0,0" TextWrapping="Wrap" />
 
                                 <TextBlock Grid.Row="2" Text="内容纯度" Style="{StaticResource FieldLabelStyle}" Margin="0,0,0,10" />
@@ -115,7 +98,7 @@
                         </StackPanel>
                     </Border>
 
-                    <Border Style="{StaticResource PanelStyle}" Margin="0,12,0,0">
+                    <Border Style="{StaticResource PanelStyle}" Margin="0,16,0,0">
                         <StackPanel>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -124,19 +107,20 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
                                     <TextBlock Text="自动轮换" Style="{StaticResource SectionTitleStyle}" />
-                                    <TextBlock Text="设置轮换周期和下一轮临时搜索条件" Foreground="{StaticResource MutedTextBrush}" Margin="0,3,0,0" />
+                                    <TextBlock Text="设置轮换周期和下一轮临时搜索条件" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,4,0,0" />
                                 </StackPanel>
-                                <Button Grid.Column="1" Content="保存设置" Width="108" Style="{StaticResource PrimaryButtonStyle}" Click="SaveButton_OnClick" />
+                                <Button Grid.Column="1" Content="保存设置" Width="116" Style="{StaticResource AccentButtonStyle}" Click="SaveButton_OnClick" />
                             </Grid>
 
-                            <Grid Margin="0,14,0,0">
+                            <Grid Margin="0,18,0,0">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="126" />
+                                    <ColumnDefinition Width="118" />
                                     <ColumnDefinition Width="96" />
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
@@ -147,6 +131,12 @@
 
                                 <TextBlock Grid.Row="1" Grid.Column="0" Text="下一次关键词" Style="{StaticResource FieldLabelStyle}" />
                                 <TextBox x:Name="NextSearchKeywordBox" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" />
+
+                                <StackPanel x:Name="RotationCountdownPanel" Grid.Row="2" Grid.ColumnSpan="4" Orientation="Horizontal" Margin="0,14,0,0" Visibility="Collapsed">
+                                    <FontIcon Glyph="&#xE823;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                    <TextBlock Text="下次轮换" Style="{StaticResource FieldLabelStyle}" Margin="8,0,12,0" />
+                                    <TextBlock x:Name="RotationCountdownText" FontWeight="SemiBold" FontFamily="Consolas" VerticalAlignment="Center" />
+                                </StackPanel>
                             </Grid>
                         </StackPanel>
                     </Border>
@@ -156,7 +146,7 @@
             <Grid Grid.Column="2">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="12" />
+                    <RowDefinition Height="16" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
@@ -168,19 +158,19 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="当前壁纸" Style="{StaticResource SectionTitleStyle}" />
-                            <Border Grid.Column="1" Background="#E9F1FF" CornerRadius="4" Padding="8,3">
-                                <TextBlock Text="ACTIVE" Foreground="{StaticResource AccentBrush}" FontSize="11" FontWeight="SemiBold" />
+                            <Border Grid.Column="1" Background="{ThemeResource AccentFillColorTertiaryBrush}" CornerRadius="12" Padding="10,4">
+                                <TextBlock Text="ACTIVE" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" FontSize="11" FontWeight="SemiBold" />
                             </Border>
                         </Grid>
 
-                        <Border Height="210" Background="#EEF1F5" CornerRadius="6" ClipToBounds="True">
+                        <Border Width="480" Height="270" HorizontalAlignment="Center" Background="{ThemeResource LayerFillColorAltBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="9">
                             <Grid>
-                                <TextBlock x:Name="WallpaperEmptyText" Text="完成一次抓取后显示壁纸信息" Foreground="{StaticResource MutedTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" Margin="24" />
+                                <TextBlock x:Name="WallpaperEmptyText" Text="完成一次抓取后显示壁纸信息" Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" Margin="24" />
                                 <Image x:Name="CurrentWallpaperImage" Stretch="UniformToFill" />
                             </Grid>
                         </Border>
 
-                        <Grid Margin="0,14,0,0">
+                        <Grid Margin="0,18,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="76" />
                                 <ColumnDefinition Width="*" />
@@ -201,14 +191,15 @@
                             <TextBlock x:Name="CurrentPurityText" Grid.Row="3" Grid.Column="1" Text="-" />
                         </Grid>
 
-                        <Grid Margin="0,14,0,0">
+                        <Grid Margin="0,18,0,0" ColumnSpacing="10">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="10" />
+                                <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <Button x:Name="CopyUrlButton" Grid.Column="0" Content="复制页面 URL" IsEnabled="False" Style="{StaticResource ModernButtonStyle}" Click="CopyUrlButton_OnClick" />
-                            <Button x:Name="OpenUrlButton" Grid.Column="2" Content="浏览器打开" IsEnabled="False" Style="{StaticResource ModernButtonStyle}" Click="OpenUrlButton_OnClick" />
+                            <Button x:Name="SaveImageButton" Grid.Column="0" Content="保存图片" HorizontalAlignment="Stretch" IsEnabled="False" Click="SaveImageButton_OnClick" />
+                            <Button x:Name="CopyUrlButton" Grid.Column="1" Content="复制页面 URL" HorizontalAlignment="Stretch" IsEnabled="False" Click="CopyUrlButton_OnClick" />
+                            <Button x:Name="OpenUrlButton" Grid.Column="2" Content="浏览器打开" HorizontalAlignment="Stretch" IsEnabled="False" Click="OpenUrlButton_OnClick" />
                         </Grid>
                     </StackPanel>
                 </Border>
@@ -221,15 +212,15 @@
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
                         <TextBlock Text="运行状态" Style="{StaticResource SectionTitleStyle}" />
-                        <TextBlock x:Name="StatusText" Grid.Row="1" Margin="0,6,0,10" TextWrapping="Wrap" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" />
-                        <TextBox x:Name="LogTextBox" Grid.Row="2" MinHeight="76" Padding="10" IsReadOnly="True" IsReadOnlyCaretVisible="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Background="#F8FAFC" />
+                        <TextBlock x:Name="StatusText" Grid.Row="1" Margin="0,6,0,10" TextWrapping="Wrap" FontWeight="SemiBold" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                        <TextBox x:Name="LogTextBox" Grid.Row="2" MinHeight="94" Padding="12" IsReadOnly="True" TextWrapping="Wrap" ScrollViewer.VerticalScrollBarVisibility="Auto" />
                     </Grid>
                 </Border>
             </Grid>
         </Grid>
 
-        <Border Grid.Row="2" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="24,8">
-            <TextBlock Text="关闭窗口后程序仍会在系统托盘继续运行" Foreground="{StaticResource MutedTextBrush}" FontSize="12" />
+        <Border Grid.Row="2" Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="28,10">
+            <TextBlock Text="关闭窗口后程序仍会在系统托盘继续运行" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" />
         </Border>
     </Grid>
 </Window>

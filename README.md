@@ -1,33 +1,70 @@
-# WallhavenService
+# Wallhaven 壁纸服务（WinUI 3）
 
-Windows-only WPF desktop application for periodically downloading a Wallhaven wallpaper and applying it to the desktop.
+一个基于 **WinUI 3 / Windows App SDK** 的 Windows 桌面壁纸自动轮换工具。程序会从 Wallhaven 搜索图片、下载到本地、设为桌面壁纸，并在窗口关闭后继续驻留系统托盘。
 
-## Run
+## 技术栈
+
+- .NET 10
+- WinUI 3
+- Windows App SDK 1.8
+- 非打包桌面应用（unpackaged）
+- x64
+
+## 功能
+
+- Wallhaven API 搜索与下载
+- SFW / Sketchy / NSFW 内容纯度过滤
+- General / Anime / People 分类过滤
+- 最低分辨率、图片比例与关键词设置
+- 定时自动轮换和立即抓取
+- 当前壁纸预览、页面链接复制与浏览器打开
+- 将当前壁纸保存到“图片”目录
+- Windows 应用通知
+- 系统托盘菜单：打开设置、立即抓取、保存当前图片、退出
+- 缓存和设置持久化
+
+## 构建
+
+要求：
+
+- Windows 10 1809 或更高版本
+- .NET 10 SDK
 
 ```powershell
-dotnet run
+dotnet restore
+dotnet build .\WallhavenService.csproj -c Debug -p:Platform=x64
 ```
 
-The application starts as a tray application. Closing the settings window hides it; use the tray menu to exit.
+生成目录：
 
-## Current skeleton
+```text
+bin\x64\Debug\net10.0-windows10.0.19041.0\
+```
 
-- .NET 10 WPF desktop application
-- Tray icon with open, run-now, and exit commands
-- Configurable keyword list, purity (SFW/Sketchy/NSFW), categories (General/Anime/People), minimum resolution, aspect ratio, and interval
-- In-memory one-time keyword override used by the next manual or automatic search
-- `PeriodicTimer` scheduler with manual trigger and duplicate-run protection
-- Wallhaven API search and image download
-- Windows desktop wallpaper API integration
-- Local JSON settings under `%AppData%\WallhavenService\settings.json`
-- Balloon notifications for tray-visible status
-- Interactive Windows notifications before search and after download, including a thumbnail preview, result metadata, and page URL actions
-- Immediate startup search when settings are valid and no fresh cached wallpaper exists
-- Failure notifications and automatic rotation shutdown after five consecutive failures
-- In-task retries after 3, 10, 30, 30, and 30 seconds before a rotation is counted as failed
+## 运行
 
-One keyword is selected randomly for each run. The Wallhaven API key is optional for public content; NSFW is disabled when no API key is configured. The app uses the API endpoint rather than scraping the HTML page.
+```powershell
+dotnet run --project .\WallhavenService.csproj -c Debug -p:Platform=x64
+```
 
-When a next-search keyword is configured, it takes priority over the keyword list. It is kept only in memory, survives failed attempts, and is cleared after the first successful search. Restarting the application discards it.
+或者直接运行生成目录中的 `WallhavenService.exe`。
 
-The current wallpaper is stored as `%TEMP%\WallhavenService\current-wallpaper.<format>` and overwritten on each run. Its Wallhaven metadata is persisted atomically in `%TEMP%\WallhavenService\current-wallpaper.json`. On startup, a valid cache younger than the configured rotation interval is restored and the immediate search is skipped; the next automatic search waits only for the remaining interval. Use **保存当前图片** from the tray menu to copy it to `Pictures\wallhaven-<Wallhaven ID>.<format>`. If that exact file already exists, it is left unchanged. Random searches include a new six-character alphanumeric `seed` on every run.
+项目配置了 `WindowsAppSDKSelfContained=true`，发布/复制时无需目标机器预先安装 Windows App Runtime。
+
+## 使用说明
+
+1. 输入一个或多个关键词（每行一个）。
+2. 选择内容纯度、壁纸分类、最低分辨率和比例。
+3. 如需 NSFW 内容，请配置 Wallhaven API Key。
+4. 点击“保存设置”应用自动轮换配置，或点击“立即抓取”。
+5. 关闭主窗口只会隐藏到系统托盘；需要完全退出时，请使用托盘菜单中的“退出”。
+
+## 数据目录
+
+应用数据保存在：
+
+```text
+%APPDATA%\WallhavenService\
+```
+
+其中包含设置、当前壁纸缓存和下载文件。
