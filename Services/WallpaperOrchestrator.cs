@@ -7,6 +7,14 @@ namespace WallhavenService.Services;
 public sealed class WallpaperOrchestrator : IAsyncDisposable
 {
     private const int MaximumConsecutiveFailures = 5;
+    private static readonly TimeSpan[] RetryDelays =
+    [
+        TimeSpan.FromSeconds(3),
+        TimeSpan.FromSeconds(10),
+        TimeSpan.FromSeconds(30),
+        TimeSpan.FromSeconds(30),
+        TimeSpan.FromSeconds(30)
+    ];
 
     private readonly SettingsStore _settingsStore = new();
     private readonly WallpaperCacheStore _cacheStore = new();
@@ -30,6 +38,7 @@ public sealed class WallpaperOrchestrator : IAsyncDisposable
     public event EventHandler? NextSearchKeywordConsumed;
     public event EventHandler<WallpaperItem>? WallpaperUpdated;
     public event EventHandler<WallpaperItem>? WallpaperRestored;
+    public event EventHandler<SearchRetry>? SearchRetryScheduled;
     public event EventHandler<SearchFailure>? SearchFailed;
     public event EventHandler? AutoRotationDisabled;
 
@@ -112,11 +121,7 @@ public sealed class WallpaperOrchestrator : IAsyncDisposable
             var displayTag = string.IsNullOrWhiteSpace(searchTag) ? "（无关键词）" : searchTag;
             Report($"开始搜索壁纸，关键词：{displayTag}");
             SearchStarting?.Invoke(this, displayTag);
-            var item = await _client.FindWallpaperAsync(_settings, searchTag, cancellationToken);
-            Report($"已找到壁纸 {item.Id}，正在下载");
-            var imagePath = await _client.DownloadCurrentAsync(item, _cacheStore.CacheDirectory, cancellationToken);
-            _cacheStore.Save(item, imagePath);
-            _wallpaperService.SetWallpaper(imagePath);
+            var (item, imagePath) = await SearchAndApplyWithRetryAsync(searchTag, cancellationToken);
             _currentWallpaper = item;
             _currentWallpaperPath = imagePath;
             _currentWallpaperLastWriteUtc = File.GetLastWriteTimeUtc(imagePath);
@@ -160,6 +165,38 @@ public sealed class WallpaperOrchestrator : IAsyncDisposable
         finally
         {
             _runLock.Release();
+        }
+    }
+
+    private async Task<(WallpaperItem Wallpaper, string ImagePath)> SearchAndApplyWithRetryAsync(
+        string searchTag,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                var item = await _client.FindWallpaperAsync(_settings, searchTag, cancellationToken);
+                Report($"已找到壁纸 {item.Id}，正在下载");
+                var imagePath = await _client.DownloadCurrentAsync(item, _cacheStore.CacheDirectory, cancellationToken);
+                _cacheStore.Save(item, imagePath);
+                _wallpaperService.SetWallpaper(imagePath);
+                return (item, imagePath);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex) when (attempt < RetryDelays.Length)
+            {
+                var delay = RetryDelays[attempt];
+                var retryNumber = attempt + 1;
+                Report($"搜索失败：{ex.Message}；{delay.TotalSeconds:0} 秒后重试（{retryNumber}/{RetryDelays.Length}）");
+                SearchRetryScheduled?.Invoke(
+                    this,
+                    new SearchRetry(ex.Message, retryNumber, RetryDelays.Length, delay));
+                await Task.Delay(delay, cancellationToken);
+            }
         }
     }
 

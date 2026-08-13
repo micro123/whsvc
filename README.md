@@ -24,6 +24,7 @@ The application starts as a tray application. Closing the settings window hides 
 - Interactive Windows notifications before search and after download, including a thumbnail preview, result metadata, and page URL actions
 - Immediate startup search when settings are valid and no fresh cached wallpaper exists
 - Failure notifications and automatic rotation shutdown after five consecutive failures
+- In-task retries after 3, 10, 30, 30, and 30 seconds before a rotation is counted as failed
 
 One keyword is selected randomly for each run. The Wallhaven API key is optional for public content; NSFW is disabled when no API key is configured. The app uses the API endpoint rather than scraping the HTML page.
 

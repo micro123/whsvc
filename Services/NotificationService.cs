@@ -52,6 +52,14 @@ public sealed class NotificationService : IDisposable
             .Show();
     }
 
+    public void ShowSearchRetry(SearchRetry retry)
+    {
+        new ToastContentBuilder()
+            .AddText("壁纸搜索暂时失败")
+            .AddText($"{retry.Message}\n将在 {retry.Delay.TotalSeconds:0} 秒后重试（{retry.RetryNumber}/{retry.MaximumRetries}）")
+            .Show();
+    }
+
     private static void OnToastActivated(ToastNotificationActivatedEventArgsCompat e)
     {
         try

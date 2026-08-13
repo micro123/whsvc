@@ -3,142 +3,186 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Wallhaven 壁纸服务"
         Width="1120"
-        Height="760"
-        MinWidth="920"
-        MinHeight="680"
+        Height="720"
+        MinWidth="940"
+        MinHeight="640"
+        TextOptions.TextRenderingMode="ClearType"
+        TextOptions.TextFormattingMode="Display"
         WindowStartupLocation="CenterScreen">
-    <Grid Margin="24">
+    <Window.Resources>
+        <Style x:Key="PanelStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="16" />
+        </Style>
+    </Window.Resources>
+
+    <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <DockPanel Grid.Row="0" Margin="0,0,0,20">
-            <StackPanel>
-                <TextBlock Text="Wallhaven 壁纸服务" FontSize="26" FontWeight="SemiBold" />
-                <TextBlock Text="定时抓取并自动更新 Windows 桌面壁纸" Foreground="#666" Margin="0,6,0,0" />
-            </StackPanel>
-            <Button x:Name="RunButton" Content="立即抓取" Width="110" Height="36" DockPanel.Dock="Right" Click="RunButton_OnClick" />
-        </DockPanel>
+        <Border Grid.Row="0" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+            <Grid Margin="24,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="Wallhaven 壁纸服务" FontSize="23" FontWeight="SemiBold" />
+                    <TextBlock Text="自动发现并轮换桌面壁纸" Foreground="{StaticResource MutedTextBrush}" Margin="0,3,0,0" />
+                </StackPanel>
+                <Button x:Name="RunButton" Grid.Column="1" Content="立即抓取" Width="116" Style="{StaticResource PrimaryButtonStyle}" Click="RunButton_OnClick" />
+            </Grid>
+        </Border>
 
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="1" Margin="24,16">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="3*" MinWidth="510" />
+                <ColumnDefinition Width="3*" MinWidth="540" />
                 <ColumnDefinition Width="20" />
-                <ColumnDefinition Width="2*" MinWidth="340" />
+                <ColumnDefinition Width="2*" MinWidth="360" />
             </Grid.ColumnDefinitions>
 
-            <Grid Grid.Column="0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
+            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel>
+                    <Border Style="{StaticResource PanelStyle}">
+                        <StackPanel>
+                            <TextBlock Text="搜索设置" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Text="配置 Wallhaven 的搜索范围和过滤条件" Foreground="{StaticResource MutedTextBrush}" Margin="0,3,0,14" />
 
-                <GroupBox Grid.Row="0" Header="抓取设置" Padding="14" Margin="0,0,0,14">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="130" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="130" />
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="126" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="122" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
 
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Wallhaven API Key" VerticalAlignment="Center" />
-                        <PasswordBox x:Name="ApiKeyBox" Grid.Row="0" Grid.Column="1" Margin="8,0,8,8" PasswordChanged="ApiKeyBox_OnPasswordChanged" />
-                        <TextBlock Grid.Row="0" Grid.Column="2" Text="NSFW 内容需要" Foreground="#777" VerticalAlignment="Center" />
+                                <TextBlock Grid.Row="0" Text="API Key" Style="{StaticResource FieldLabelStyle}" Margin="0,0,0,10" />
+                                <PasswordBox x:Name="ApiKeyBox" Grid.Row="0" Grid.Column="1" Margin="0,0,12,10" PasswordChanged="ApiKeyBox_OnPasswordChanged" />
+                                <TextBlock Grid.Row="0" Grid.Column="2" Text="NSFW 内容需要" Style="{StaticResource FieldLabelStyle}" Margin="0,0,0,10" />
 
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="搜索关键词列表" VerticalAlignment="Top" Margin="0,5,0,0" />
-                        <TextBox x:Name="KeywordsBox" Grid.Row="1" Grid.Column="1" Margin="8,0,8,8" Height="82" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" />
-                        <TextBlock Grid.Row="1" Grid.Column="2" Text="每行一个，每次随机选择" Foreground="#777" VerticalAlignment="Top" Margin="0,5,0,0" TextWrapping="Wrap" />
+                                <TextBlock Grid.Row="1" Text="关键词列表" Style="{StaticResource FieldLabelStyle}" VerticalAlignment="Top" Margin="0,8,0,0" />
+                                <TextBox x:Name="KeywordsBox" Grid.Row="1" Grid.Column="1" Margin="0,0,12,10" Height="76" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top" />
+                                <TextBlock Grid.Row="1" Grid.Column="2" Text="每行一个，每轮随机" Style="{StaticResource FieldLabelStyle}" VerticalAlignment="Top" Margin="0,8,0,0" TextWrapping="Wrap" />
 
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="内容纯度" VerticalAlignment="Center" />
-                        <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="8,0,8,8">
-                            <CheckBox x:Name="SfwBox" Content="SFW" Margin="0,0,18,0" />
-                            <CheckBox x:Name="SketchyBox" Content="Sketchy" Margin="0,0,18,0" />
-                            <CheckBox x:Name="NsfwBox" Content="NSFW" />
+                                <TextBlock Grid.Row="2" Text="内容纯度" Style="{StaticResource FieldLabelStyle}" Margin="0,0,0,10" />
+                                <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,0,12,12">
+                                    <CheckBox x:Name="SfwBox" Content="SFW" Margin="0,0,20,0" />
+                                    <CheckBox x:Name="SketchyBox" Content="Sketchy" Margin="0,0,20,0" />
+                                    <CheckBox x:Name="NsfwBox" Content="NSFW" />
+                                </StackPanel>
+                                <TextBlock x:Name="NsfwHintText" Grid.Row="2" Grid.Column="2" Text="无 API Key 时禁用" Style="{StaticResource FieldLabelStyle}" Margin="0,0,0,10" TextWrapping="Wrap" />
+
+                                <TextBlock Grid.Row="3" Text="壁纸分类" Style="{StaticResource FieldLabelStyle}" Margin="0,0,0,10" />
+                                <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,0,12,12">
+                                    <CheckBox x:Name="GeneralBox" Content="General" Margin="0,0,20,0" />
+                                    <CheckBox x:Name="AnimeBox" Content="Anime" Margin="0,0,20,0" />
+                                    <CheckBox x:Name="PeopleBox" Content="People" />
+                                </StackPanel>
+
+                                <TextBlock Grid.Row="4" Text="最低分辨率" Style="{StaticResource FieldLabelStyle}" Margin="0,0,0,10" />
+                                <TextBox x:Name="MinimumResolutionBox" Grid.Row="4" Grid.Column="1" Margin="0,0,12,10" />
+                                <TextBlock Grid.Row="4" Grid.Column="2" Text="例如 1920x1080" Style="{StaticResource FieldLabelStyle}" Margin="0,0,0,10" />
+
+                                <TextBlock Grid.Row="5" Text="图片比例" Style="{StaticResource FieldLabelStyle}" />
+                                <ComboBox x:Name="AspectRatioBox" Grid.Row="5" Grid.Column="1" Margin="0,0,12,0" SelectedIndex="1">
+                                    <ComboBoxItem Content="不限" Tag="" />
+                                    <ComboBoxItem Content="16:9" Tag="16x9" />
+                                    <ComboBoxItem Content="16:10" Tag="16x10" />
+                                    <ComboBoxItem Content="21:9" Tag="21x9" />
+                                    <ComboBoxItem Content="32:9" Tag="32x9" />
+                                    <ComboBoxItem Content="4:3" Tag="4x3" />
+                                    <ComboBoxItem Content="5:4" Tag="5x4" />
+                                    <ComboBoxItem Content="3:2" Tag="3x2" />
+                                    <ComboBoxItem Content="1:1" Tag="1x1" />
+                                    <ComboBoxItem Content="9:16" Tag="9x16" />
+                                    <ComboBoxItem Content="10:16" Tag="10x16" />
+                                </ComboBox>
+                                <TextBlock Grid.Row="5" Grid.Column="2" Text="画面宽高比" Style="{StaticResource FieldLabelStyle}" />
+                            </Grid>
                         </StackPanel>
-                        <TextBlock x:Name="NsfwHintText" Grid.Row="2" Grid.Column="2" Text="无 API Key 时禁用 NSFW" Foreground="#777" VerticalAlignment="Center" TextWrapping="Wrap" />
+                    </Border>
 
-                        <TextBlock Grid.Row="3" Grid.Column="0" Text="壁纸分类" VerticalAlignment="Center" />
-                        <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="8,0,8,8">
-                            <CheckBox x:Name="GeneralBox" Content="General" Margin="0,0,18,0" />
-                            <CheckBox x:Name="AnimeBox" Content="Anime" Margin="0,0,18,0" />
-                            <CheckBox x:Name="PeopleBox" Content="People" />
+                    <Border Style="{StaticResource PanelStyle}" Margin="0,12,0,0">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="自动轮换" Style="{StaticResource SectionTitleStyle}" />
+                                    <TextBlock Text="设置轮换周期和下一轮临时搜索条件" Foreground="{StaticResource MutedTextBrush}" Margin="0,3,0,0" />
+                                </StackPanel>
+                                <Button Grid.Column="1" Content="保存设置" Width="108" Style="{StaticResource PrimaryButtonStyle}" Click="SaveButton_OnClick" />
+                            </Grid>
+
+                            <Grid Margin="0,14,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="126" />
+                                    <ColumnDefinition Width="96" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <CheckBox x:Name="ScheduleEnabledBox" Grid.Row="0" Grid.Column="0" Content="启用自动轮换" Margin="0,0,0,10" />
+                                <TextBox x:Name="IntervalBox" Grid.Row="0" Grid.Column="1" Margin="0,0,8,10" />
+                                <TextBlock Grid.Row="0" Grid.Column="2" Text="分钟" Style="{StaticResource FieldLabelStyle}" Margin="0,0,0,10" />
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="下一次关键词" Style="{StaticResource FieldLabelStyle}" />
+                                <TextBox x:Name="NextSearchKeywordBox" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" />
+                            </Grid>
                         </StackPanel>
-
-                        <TextBlock Grid.Row="4" Grid.Column="0" Text="最低分辨率" VerticalAlignment="Center" />
-                        <TextBox x:Name="MinimumResolutionBox" Grid.Row="4" Grid.Column="1" Margin="8,0,8,8" />
-                        <TextBlock Grid.Row="4" Grid.Column="2" Text="例如 1920x1080" Foreground="#777" VerticalAlignment="Center" />
-
-                        <TextBlock Grid.Row="5" Grid.Column="0" Text="图片比例" VerticalAlignment="Center" />
-                        <ComboBox x:Name="AspectRatioBox" Grid.Row="5" Grid.Column="1" Margin="8,0,8,0" SelectedIndex="1">
-                            <ComboBoxItem Content="不限" Tag="" />
-                            <ComboBoxItem Content="16:9" Tag="16x9" />
-                            <ComboBoxItem Content="16:10" Tag="16x10" />
-                            <ComboBoxItem Content="21:9" Tag="21x9" />
-                            <ComboBoxItem Content="32:9" Tag="32x9" />
-                            <ComboBoxItem Content="4:3" Tag="4x3" />
-                            <ComboBoxItem Content="5:4" Tag="5x4" />
-                            <ComboBoxItem Content="3:2" Tag="3x2" />
-                            <ComboBoxItem Content="1:1" Tag="1x1" />
-                            <ComboBoxItem Content="9:16" Tag="9x16" />
-                            <ComboBoxItem Content="10:16" Tag="10x16" />
-                        </ComboBox>
-                        <TextBlock Grid.Row="5" Grid.Column="2" Text="Wallhaven ratios" Foreground="#777" VerticalAlignment="Center" />
-                    </Grid>
-                </GroupBox>
-
-                <GroupBox Grid.Row="1" Header="定时任务" Padding="14">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="130" />
-                            <ColumnDefinition Width="80" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-                        <CheckBox x:Name="ScheduleEnabledBox" Grid.Row="0" Grid.Column="0" Content="启用定时抓取" VerticalAlignment="Center" />
-                        <TextBox x:Name="IntervalBox" Grid.Row="0" Grid.Column="1" Margin="12,0,8,0" VerticalContentAlignment="Center" />
-                        <TextBlock Grid.Row="0" Grid.Column="2" Text="分钟" VerticalAlignment="Center" />
-                        <Button Grid.Row="0" Grid.Column="3" Content="保存设置并应用" Width="130" HorizontalAlignment="Right" Click="SaveButton_OnClick" />
-
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="下一次搜索关键词" VerticalAlignment="Center" Margin="0,12,0,0" />
-                        <TextBox x:Name="NextSearchKeywordBox" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" Margin="12,12,0,0" VerticalContentAlignment="Center" />
-                    </Grid>
-                </GroupBox>
-            </Grid>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
 
             <Grid Grid.Column="2">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="14" />
+                    <RowDefinition Height="12" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <GroupBox Grid.Row="0" Header="当前壁纸" Padding="14">
+                <Border Grid.Row="0" Style="{StaticResource PanelStyle}">
                     <StackPanel>
-                        <Border Height="230" Background="#ECECEC" BorderBrush="#D5D5D5" BorderThickness="1" CornerRadius="4" ClipToBounds="True">
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="当前壁纸" Style="{StaticResource SectionTitleStyle}" />
+                            <Border Grid.Column="1" Background="#E9F1FF" CornerRadius="4" Padding="8,3">
+                                <TextBlock Text="ACTIVE" Foreground="{StaticResource AccentBrush}" FontSize="11" FontWeight="SemiBold" />
+                            </Border>
+                        </Grid>
+
+                        <Border Height="210" Background="#EEF1F5" CornerRadius="6" ClipToBounds="True">
                             <Grid>
-                                <TextBlock x:Name="WallpaperEmptyText" Text="完成一次抓取后显示壁纸信息" Foreground="#777" HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" Margin="24" />
+                                <TextBlock x:Name="WallpaperEmptyText" Text="完成一次抓取后显示壁纸信息" Foreground="{StaticResource MutedTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" Margin="24" />
                                 <Image x:Name="CurrentWallpaperImage" Stretch="UniformToFill" />
                             </Grid>
                         </Border>
 
                         <Grid Margin="0,14,0,0">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="84" />
+                                <ColumnDefinition Width="76" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
@@ -147,43 +191,45 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
-                            <TextBlock Grid.Row="0" Text="Tag" Foreground="#666" Margin="0,0,0,7" />
-                            <TextBlock x:Name="CurrentTagText" Grid.Row="0" Grid.Column="1" Text="-" TextWrapping="Wrap" Margin="0,0,0,7" />
-                            <TextBlock Grid.Row="1" Text="ID" Foreground="#666" Margin="0,0,0,7" />
-                            <TextBlock x:Name="CurrentIdText" Grid.Row="1" Grid.Column="1" Text="-" Margin="0,0,0,7" />
-                            <TextBlock Grid.Row="2" Text="分辨率" Foreground="#666" Margin="0,0,0,7" />
-                            <TextBlock x:Name="CurrentResolutionText" Grid.Row="2" Grid.Column="1" Text="-" Margin="0,0,0,7" />
-                            <TextBlock Grid.Row="3" Text="Purity" Foreground="#666" />
+                            <TextBlock Grid.Row="0" Text="Tag" Style="{StaticResource FieldLabelStyle}" Margin="0,0,0,8" />
+                            <TextBlock x:Name="CurrentTagText" Grid.Row="0" Grid.Column="1" Text="-" TextWrapping="Wrap" Margin="0,0,0,8" />
+                            <TextBlock Grid.Row="1" Text="ID" Style="{StaticResource FieldLabelStyle}" Margin="0,0,0,8" />
+                            <TextBlock x:Name="CurrentIdText" Grid.Row="1" Grid.Column="1" Text="-" Margin="0,0,0,8" />
+                            <TextBlock Grid.Row="2" Text="分辨率" Style="{StaticResource FieldLabelStyle}" Margin="0,0,0,8" />
+                            <TextBlock x:Name="CurrentResolutionText" Grid.Row="2" Grid.Column="1" Text="-" Margin="0,0,0,8" />
+                            <TextBlock Grid.Row="3" Text="Purity" Style="{StaticResource FieldLabelStyle}" />
                             <TextBlock x:Name="CurrentPurityText" Grid.Row="3" Grid.Column="1" Text="-" />
                         </Grid>
 
-                        <Grid Margin="0,16,0,0">
+                        <Grid Margin="0,14,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="10" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <Button x:Name="CopyUrlButton" Grid.Column="0" Content="复制页面 URL" Height="34" IsEnabled="False" Click="CopyUrlButton_OnClick" />
-                            <Button x:Name="OpenUrlButton" Grid.Column="2" Content="浏览器打开" Height="34" IsEnabled="False" Click="OpenUrlButton_OnClick" />
+                            <Button x:Name="CopyUrlButton" Grid.Column="0" Content="复制页面 URL" IsEnabled="False" Style="{StaticResource ModernButtonStyle}" Click="CopyUrlButton_OnClick" />
+                            <Button x:Name="OpenUrlButton" Grid.Column="2" Content="浏览器打开" IsEnabled="False" Style="{StaticResource ModernButtonStyle}" Click="OpenUrlButton_OnClick" />
                         </Grid>
                     </StackPanel>
-                </GroupBox>
+                </Border>
 
-                <GroupBox Grid.Row="2" Header="运行状态" Padding="14">
+                <Border Grid.Row="2" Style="{StaticResource PanelStyle}">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
-                        <TextBlock x:Name="StatusText" FontSize="15" TextWrapping="Wrap" />
-                        <TextBox x:Name="LogTextBox" Grid.Row="1" Margin="0,12,0,0" MinHeight="100" IsReadOnly="True" IsReadOnlyCaretVisible="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+                        <TextBlock Text="运行状态" Style="{StaticResource SectionTitleStyle}" />
+                        <TextBlock x:Name="StatusText" Grid.Row="1" Margin="0,6,0,10" TextWrapping="Wrap" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" />
+                        <TextBox x:Name="LogTextBox" Grid.Row="2" MinHeight="76" Padding="10" IsReadOnly="True" IsReadOnlyCaretVisible="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Background="#F8FAFC" />
                     </Grid>
-                </GroupBox>
+                </Border>
             </Grid>
         </Grid>
 
-        <StatusBar Grid.Row="2" Margin="0,14,0,0">
-            <StatusBarItem Content="程序会常驻系统托盘，关闭窗口不会退出" />
-        </StatusBar>
+        <Border Grid.Row="2" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="24,8">
+            <TextBlock Text="关闭窗口后程序仍会在系统托盘继续运行" Foreground="{StaticResource MutedTextBrush}" FontSize="12" />
+        </Border>
     </Grid>
 </Window>

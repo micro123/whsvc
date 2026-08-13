@@ -1,8 +1,10 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Forms = System.Windows.Forms;
@@ -20,15 +22,26 @@ public partial class MainWindow : Window
     private WallpaperItem? _displayedWallpaper;
     private bool _allowClose;
 
+    private const int DwmwaUseImmersiveDarkMode = 20;
+    private const int DwmwaWindowCornerPreference = 33;
+    private const int DwmwaSystemBackdropType = 38;
+    private const int DwmsbtMainWindow = 2;
+    private const int DwmcpRound = 2;
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int valueSize);
+
     public MainWindow(WallpaperOrchestrator orchestrator)
     {
         InitializeComponent();
+        SourceInitialized += (_, _) => ApplyWindows11WindowStyle();
         _orchestrator = orchestrator;
         _orchestrator.StatusChanged += Orchestrator_OnStatusChanged;
         _orchestrator.SearchStarting += Orchestrator_OnSearchStarting;
         _orchestrator.NextSearchKeywordConsumed += Orchestrator_OnNextSearchKeywordConsumed;
         _orchestrator.WallpaperUpdated += Orchestrator_OnWallpaperUpdated;
         _orchestrator.WallpaperRestored += Orchestrator_OnWallpaperRestored;
+        _orchestrator.SearchRetryScheduled += Orchestrator_OnSearchRetryScheduled;
         _orchestrator.SearchFailed += Orchestrator_OnSearchFailed;
         _orchestrator.AutoRotationDisabled += Orchestrator_OnAutoRotationDisabled;
         _notificationService = new NotificationService();
@@ -50,6 +63,18 @@ public partial class MainWindow : Window
         LoadSettings();
         UpdateStatus("等待任务");
         Loaded += MainWindow_OnLoaded;
+    }
+
+    private void ApplyWindows11WindowStyle()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        var lightMode = 0;
+        var roundedCorners = DwmcpRound;
+        var micaBackdrop = DwmsbtMainWindow;
+
+        DwmSetWindowAttribute(hwnd, DwmwaUseImmersiveDarkMode, ref lightMode, sizeof(int));
+        DwmSetWindowAttribute(hwnd, DwmwaWindowCornerPreference, ref roundedCorners, sizeof(int));
+        DwmSetWindowAttribute(hwnd, DwmwaSystemBackdropType, ref micaBackdrop, sizeof(int));
     }
 
     private Forms.ContextMenuStrip CreateTrayMenu()
@@ -253,6 +278,18 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             Dispatcher.Invoke(() => UpdateStatus($"失败通知发送失败：{ex.Message}"));
+        }
+    }
+
+    private void Orchestrator_OnSearchRetryScheduled(object? sender, SearchRetry retry)
+    {
+        try
+        {
+            _notificationService.ShowSearchRetry(retry);
+        }
+        catch (Exception ex)
+        {
+            Dispatcher.Invoke(() => UpdateStatus($"重试通知发送失败：{ex.Message}"));
         }
     }
 
