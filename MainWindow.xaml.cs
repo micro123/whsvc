@@ -1,7 +1,10 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using Forms = System.Windows.Forms;
 using WallhavenService.Models;
 using WallhavenService.Services;
@@ -13,6 +16,8 @@ public partial class MainWindow : Window
     private readonly WallpaperOrchestrator _orchestrator;
     private readonly Forms.NotifyIcon _trayIcon;
     private readonly Forms.ToolStripMenuItem _saveCurrentMenuItem;
+    private readonly NotificationService _notificationService;
+    private WallpaperItem? _displayedWallpaper;
     private bool _allowClose;
 
     public MainWindow(WallpaperOrchestrator orchestrator)
@@ -20,6 +25,13 @@ public partial class MainWindow : Window
         InitializeComponent();
         _orchestrator = orchestrator;
         _orchestrator.StatusChanged += Orchestrator_OnStatusChanged;
+        _orchestrator.SearchStarting += Orchestrator_OnSearchStarting;
+        _orchestrator.NextSearchKeywordConsumed += Orchestrator_OnNextSearchKeywordConsumed;
+        _orchestrator.WallpaperUpdated += Orchestrator_OnWallpaperUpdated;
+        _orchestrator.WallpaperRestored += Orchestrator_OnWallpaperRestored;
+        _orchestrator.SearchFailed += Orchestrator_OnSearchFailed;
+        _orchestrator.AutoRotationDisabled += Orchestrator_OnAutoRotationDisabled;
+        _notificationService = new NotificationService();
         _saveCurrentMenuItem = new Forms.ToolStripMenuItem("保存当前图片")
         {
             Enabled = _orchestrator.HasCurrentWallpaper
@@ -37,6 +49,7 @@ public partial class MainWindow : Window
 
         LoadSettings();
         UpdateStatus("等待任务");
+        Loaded += MainWindow_OnLoaded;
     }
 
     private Forms.ContextMenuStrip CreateTrayMenu()
@@ -72,6 +85,11 @@ public partial class MainWindow : Window
     }
 
     private async void RunButton_OnClick(object sender, RoutedEventArgs e) => await RunAsync();
+
+    private async void MainWindow_OnLoaded(object sender, RoutedEventArgs e)
+    {
+        await _orchestrator.StartAsync();
+    }
 
     private async Task RunAsync()
     {
@@ -128,6 +146,7 @@ public partial class MainWindow : Window
             IntervalMinutes = interval
         };
         _orchestrator.UpdateSettings(settings);
+        _orchestrator.SetNextSearchKeyword(NextSearchKeywordBox.Text);
         if (showMessage)
         {
             UpdateStatus("设置已保存，定时任务已应用");
@@ -167,13 +186,121 @@ public partial class MainWindow : Window
         {
             UpdateStatus(status);
             _saveCurrentMenuItem.Enabled = _orchestrator.HasCurrentWallpaper;
-            if (status.StartsWith("开始抓取", StringComparison.Ordinal))
-                _trayIcon.ShowBalloonTip(1800, "Wallhaven 壁纸服务", status, Forms.ToolTipIcon.Info);
-            else if (status.StartsWith("壁纸更新成功", StringComparison.Ordinal))
-                _trayIcon.ShowBalloonTip(2500, "Wallhaven 壁纸服务", status, Forms.ToolTipIcon.Info);
-            else if (status.StartsWith("抓取失败", StringComparison.Ordinal))
+            if (status.StartsWith("抓取失败", StringComparison.Ordinal))
                 _trayIcon.ShowBalloonTip(3500, "Wallhaven 壁纸服务", status, Forms.ToolTipIcon.Error);
         });
+    }
+
+    private void Orchestrator_OnSearchStarting(object? sender, string searchTag)
+    {
+        try
+        {
+            _notificationService.ShowSearchStarting(searchTag);
+        }
+        catch (Exception ex)
+        {
+            Dispatcher.Invoke(() => UpdateStatus($"搜索通知发送失败：{ex.Message}"));
+        }
+    }
+
+    private void Orchestrator_OnNextSearchKeywordConsumed(object? sender, EventArgs e) =>
+        Dispatcher.Invoke(NextSearchKeywordBox.Clear);
+
+    private void Orchestrator_OnWallpaperUpdated(object? sender, WallpaperItem wallpaper)
+    {
+        try
+        {
+            _notificationService.ShowSearchResult(wallpaper);
+        }
+        catch (Exception ex)
+        {
+            Dispatcher.Invoke(() => UpdateStatus($"结果通知发送失败：{ex.Message}"));
+        }
+
+        Dispatcher.Invoke(() =>
+        {
+            try
+            {
+                ShowCurrentWallpaper(wallpaper);
+            }
+            catch (Exception ex)
+            {
+                UpdateStatus($"壁纸预览加载失败：{ex.Message}");
+            }
+        });
+    }
+
+    private void Orchestrator_OnWallpaperRestored(object? sender, WallpaperItem wallpaper) =>
+        Dispatcher.Invoke(() =>
+        {
+            try
+            {
+                ShowCurrentWallpaper(wallpaper);
+                _saveCurrentMenuItem.Enabled = true;
+            }
+            catch (Exception ex)
+            {
+                UpdateStatus($"历史壁纸预览加载失败：{ex.Message}");
+            }
+        });
+
+    private void Orchestrator_OnSearchFailed(object? sender, SearchFailure failure)
+    {
+        try
+        {
+            _notificationService.ShowSearchFailure(failure);
+        }
+        catch (Exception ex)
+        {
+            Dispatcher.Invoke(() => UpdateStatus($"失败通知发送失败：{ex.Message}"));
+        }
+    }
+
+    private void Orchestrator_OnAutoRotationDisabled(object? sender, EventArgs e) =>
+        Dispatcher.Invoke(() => ScheduleEnabledBox.IsChecked = false);
+
+    private void ShowCurrentWallpaper(WallpaperItem wallpaper)
+    {
+        _displayedWallpaper = wallpaper;
+        CurrentTagText.Text = wallpaper.SearchTag;
+        CurrentIdText.Text = wallpaper.Id;
+        CurrentResolutionText.Text = wallpaper.Resolution;
+        CurrentPurityText.Text = wallpaper.Purity.ToUpperInvariant();
+        CurrentPurityText.Foreground = wallpaper.Purity.ToLowerInvariant() switch
+        {
+            "sfw" => new SolidColorBrush(System.Windows.Media.Color.FromRgb(31, 138, 75)),
+            "sketchy" => new SolidColorBrush(System.Windows.Media.Color.FromRgb(190, 112, 0)),
+            "nsfw" => new SolidColorBrush(System.Windows.Media.Color.FromRgb(201, 48, 44)),
+            _ => System.Windows.SystemColors.GrayTextBrush
+        };
+        CurrentPurityText.FontWeight = FontWeights.SemiBold;
+
+        var image = new BitmapImage();
+        image.BeginInit();
+        image.CacheOption = BitmapCacheOption.OnLoad;
+        image.UriSource = new Uri(wallpaper.ThumbnailUrl);
+        image.EndInit();
+        CurrentWallpaperImage.Source = image;
+        WallpaperEmptyText.Visibility = Visibility.Collapsed;
+        CopyUrlButton.IsEnabled = true;
+        OpenUrlButton.IsEnabled = true;
+    }
+
+    private void CopyUrlButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_displayedWallpaper is null)
+            return;
+
+        System.Windows.Clipboard.SetText(_displayedWallpaper.SourceUrl);
+        UpdateStatus("壁纸页面 URL 已复制");
+    }
+
+    private void OpenUrlButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_displayedWallpaper is null)
+            return;
+
+        Process.Start(new ProcessStartInfo(_displayedWallpaper.SourceUrl) { UseShellExecute = true });
     }
 
     private void UpdateStatus(string status)
@@ -195,6 +322,7 @@ public partial class MainWindow : Window
         _allowClose = true;
         _trayIcon.Visible = false;
         _trayIcon.Dispose();
+        _notificationService.Dispose();
         Close();
     }
 

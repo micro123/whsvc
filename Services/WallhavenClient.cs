@@ -15,7 +15,10 @@ public sealed class WallhavenClient : IDisposable
         BaseAddress = new Uri("https://wallhaven.cc/")
     };
 
-    public async Task<WallpaperItem> FindWallpaperAsync(AppSettings settings, CancellationToken cancellationToken)
+    public async Task<WallpaperItem> FindWallpaperAsync(
+        AppSettings settings,
+        string searchTag,
+        CancellationToken cancellationToken)
     {
         var categories = string.Concat(
             settings.IncludeGeneral ? '1' : '0',
@@ -34,12 +37,8 @@ public sealed class WallhavenClient : IDisposable
             $"seed={CreateSeed()}",
             "page=1"
         };
-        var keyword = settings.SearchKeywords
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .OrderBy(_ => Random.Shared.Next())
-            .FirstOrDefault();
-        if (keyword is not null)
-            query.Add($"q={Uri.EscapeDataString(keyword)}");
+        if (!string.IsNullOrWhiteSpace(searchTag))
+            query.Add($"q={Uri.EscapeDataString(searchTag)}");
         if (!string.IsNullOrWhiteSpace(settings.MinimumResolution))
             query.Add($"atleast={Uri.EscapeDataString(settings.MinimumResolution)}");
         if (!string.IsNullOrWhiteSpace(settings.AspectRatio))
@@ -58,11 +57,26 @@ public sealed class WallhavenClient : IDisposable
             throw new InvalidOperationException("Wallhaven 没有返回符合条件的壁纸。");
 
         var item = data[Random.Shared.Next(data.GetArrayLength())];
+        var id = item.GetProperty("id").GetString() ?? throw new InvalidOperationException("壁纸缺少 ID。");
         return new WallpaperItem
         {
-            Id = item.GetProperty("id").GetString() ?? throw new InvalidOperationException("壁纸缺少 ID。"),
+            Id = id,
             ImageUrl = item.GetProperty("path").GetString() ?? throw new InvalidOperationException("壁纸缺少下载地址。"),
-            SourceUrl = item.TryGetProperty("url", out var source) ? source.GetString() : null
+            SourceUrl = item.TryGetProperty("url", out var source) && source.GetString() is { Length: > 0 } sourceUrl
+                ? sourceUrl
+                : $"https://wallhaven.cc/w/{id}",
+            ThumbnailUrl = item.TryGetProperty("thumbs", out var thumbs) &&
+                           thumbs.TryGetProperty("large", out var largeThumbnail) &&
+                           largeThumbnail.GetString() is { Length: > 0 } thumbnailUrl
+                ? thumbnailUrl
+                : item.GetProperty("path").GetString() ?? throw new InvalidOperationException("壁纸缺少缩略图地址。"),
+            SearchTag = string.IsNullOrWhiteSpace(searchTag) ? "（无关键词）" : searchTag,
+            Resolution = item.TryGetProperty("resolution", out var resolution)
+                ? resolution.GetString() ?? "未知"
+                : "未知",
+            Purity = item.TryGetProperty("purity", out var itemPurity)
+                ? itemPurity.GetString() ?? "未知"
+                : "未知"
         };
     }
 

@@ -6,18 +6,32 @@ namespace WallhavenService.Services;
 
 public sealed class WallpaperOrchestrator : IAsyncDisposable
 {
+    private const int MaximumConsecutiveFailures = 5;
+
     private readonly SettingsStore _settingsStore = new();
+    private readonly WallpaperCacheStore _cacheStore = new();
     private readonly WallhavenClient _client = new();
     private readonly DesktopWallpaperService _wallpaperService = new();
     private readonly SemaphoreSlim _runLock = new(1, 1);
+    private readonly object _nextSearchKeywordLock = new();
     private readonly CancellationTokenSource _shutdown = new();
     private CancellationTokenSource _schedulerCancellation = new();
     private Task? _schedulerTask;
     private AppSettings _settings;
     private WallpaperItem? _currentWallpaper;
     private string? _currentWallpaperPath;
+    private DateTime? _currentWallpaperLastWriteUtc;
+    private string _nextSearchKeyword = string.Empty;
+    private int _started;
+    private int _consecutiveFailures;
 
     public event EventHandler<string>? StatusChanged;
+    public event EventHandler<string>? SearchStarting;
+    public event EventHandler? NextSearchKeywordConsumed;
+    public event EventHandler<WallpaperItem>? WallpaperUpdated;
+    public event EventHandler<WallpaperItem>? WallpaperRestored;
+    public event EventHandler<SearchFailure>? SearchFailed;
+    public event EventHandler? AutoRotationDisabled;
 
     public AppSettings Settings => _settings;
     public bool HasCurrentWallpaper =>
@@ -28,15 +42,59 @@ public sealed class WallpaperOrchestrator : IAsyncDisposable
     public WallpaperOrchestrator()
     {
         _settings = _settingsStore.Load();
-        RestartScheduler();
+    }
+
+    public async Task StartAsync(CancellationToken cancellationToken = default)
+    {
+        if (Interlocked.Exchange(ref _started, 1) != 0)
+            return;
+
+        var cacheRestored = TryRestoreCurrentWallpaper();
+        if (!TryValidateSettings(_settings, out var validationError))
+        {
+            Report($"启动搜索未执行：{validationError}");
+            return;
+        }
+
+        var remainingDelay = GetRemainingRotationDelay();
+        if (cacheRestored && remainingDelay > TimeSpan.Zero)
+        {
+            Report($"已恢复当前壁纸 {_currentWallpaper!.Id}，距离下次轮换还有 {FormatDelay(remainingDelay)}");
+        }
+        else
+        {
+            await RunNowAsync(cancellationToken);
+            remainingDelay = GetRotationInterval();
+        }
+
+        if (_settings.ScheduleEnabled && !cancellationToken.IsCancellationRequested)
+            RestartScheduler(remainingDelay);
     }
 
     public void UpdateSettings(AppSettings settings)
     {
+        var wasScheduleEnabled = _settings.ScheduleEnabled;
         _settings = settings;
+        if (settings.ScheduleEnabled && !wasScheduleEnabled)
+            _consecutiveFailures = 0;
         _settingsStore.Save(settings);
-        RestartScheduler();
+        if (Volatile.Read(ref _started) != 0)
+            RestartScheduler(GetRotationInterval());
         Report("设置已保存");
+    }
+
+    public void SetNextSearchKeyword(string keyword)
+    {
+        string configuredKeyword;
+        lock (_nextSearchKeywordLock)
+        {
+            _nextSearchKeyword = keyword.Trim();
+            configuredKeyword = _nextSearchKeyword;
+        }
+
+        Report(string.IsNullOrWhiteSpace(configuredKeyword)
+            ? "一次性关键词已清除"
+            : $"下一次搜索将使用一次性关键词：{configuredKeyword}");
     }
 
     public async Task RunNowAsync(CancellationToken cancellationToken = default)
@@ -47,17 +105,29 @@ public sealed class WallpaperOrchestrator : IAsyncDisposable
             return;
         }
 
+        var countFailure = _settings.ScheduleEnabled;
         try
         {
-            Report("开始抓取壁纸");
-            var item = await _client.FindWallpaperAsync(_settings, cancellationToken);
+            var (searchTag, usedOneTimeKeyword) = SelectSearchTag();
+            var displayTag = string.IsNullOrWhiteSpace(searchTag) ? "（无关键词）" : searchTag;
+            Report($"开始搜索壁纸，关键词：{displayTag}");
+            SearchStarting?.Invoke(this, displayTag);
+            var item = await _client.FindWallpaperAsync(_settings, searchTag, cancellationToken);
             Report($"已找到壁纸 {item.Id}，正在下载");
-            var tempDirectory = Path.Combine(Path.GetTempPath(), "WallhavenService");
-            var imagePath = await _client.DownloadCurrentAsync(item, tempDirectory, cancellationToken);
+            var imagePath = await _client.DownloadCurrentAsync(item, _cacheStore.CacheDirectory, cancellationToken);
+            _cacheStore.Save(item, imagePath);
             _wallpaperService.SetWallpaper(imagePath);
             _currentWallpaper = item;
             _currentWallpaperPath = imagePath;
-            Report($"壁纸更新成功：{Path.GetFileName(imagePath)}");
+            _currentWallpaperLastWriteUtc = File.GetLastWriteTimeUtc(imagePath);
+            _consecutiveFailures = 0;
+            if (usedOneTimeKeyword && TryClearNextSearchKeyword(searchTag))
+            {
+                NextSearchKeywordConsumed?.Invoke(this, EventArgs.Empty);
+                Report("一次性关键词已使用并清空");
+            }
+            Report($"壁纸更新成功：{item.Id} / {item.Resolution} / {item.Purity}");
+            WallpaperUpdated?.Invoke(this, item);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -65,12 +135,121 @@ public sealed class WallpaperOrchestrator : IAsyncDisposable
         }
         catch (Exception ex)
         {
+            var disabled = false;
+            if (countFailure)
+            {
+                _consecutiveFailures++;
+                if (_consecutiveFailures >= MaximumConsecutiveFailures && _settings.ScheduleEnabled)
+                {
+                    _settings.ScheduleEnabled = false;
+                    _settingsStore.Save(_settings);
+                    _schedulerCancellation.Cancel();
+                    disabled = true;
+                }
+            }
+
             Report($"抓取失败：{ex.Message}");
+            var reportedFailureCount = countFailure ? _consecutiveFailures : 0;
+            SearchFailed?.Invoke(this, new SearchFailure(ex.Message, reportedFailureCount, disabled));
+            if (disabled)
+            {
+                Report("连续失败 5 次，自动轮换已禁用");
+                AutoRotationDisabled?.Invoke(this, EventArgs.Empty);
+            }
         }
         finally
         {
             _runLock.Release();
         }
+    }
+
+    private (string SearchTag, bool UsedOneTimeKeyword) SelectSearchTag()
+    {
+        lock (_nextSearchKeywordLock)
+        {
+            if (!string.IsNullOrWhiteSpace(_nextSearchKeyword))
+                return (_nextSearchKeyword, true);
+        }
+
+        var searchTag = _settings.SearchKeywords
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .OrderBy(_ => Random.Shared.Next())
+            .FirstOrDefault() ?? string.Empty;
+        return (searchTag, false);
+    }
+
+    private bool TryClearNextSearchKeyword(string usedKeyword)
+    {
+        lock (_nextSearchKeywordLock)
+        {
+            if (!string.Equals(_nextSearchKeyword, usedKeyword, StringComparison.Ordinal))
+                return false;
+
+            _nextSearchKeyword = string.Empty;
+            return true;
+        }
+    }
+
+    private bool TryRestoreCurrentWallpaper()
+    {
+        var cached = _cacheStore.Load();
+        if (cached is null)
+            return false;
+
+        _currentWallpaper = cached.Value.Wallpaper;
+        _currentWallpaperPath = cached.Value.ImagePath;
+        _currentWallpaperLastWriteUtc = cached.Value.LastWriteTimeUtc;
+        WallpaperRestored?.Invoke(this, _currentWallpaper);
+        return true;
+    }
+
+    private TimeSpan GetRemainingRotationDelay()
+    {
+        if (_currentWallpaperLastWriteUtc is null)
+            return TimeSpan.Zero;
+
+        var interval = GetRotationInterval();
+        var elapsed = DateTime.UtcNow - _currentWallpaperLastWriteUtc.Value;
+        if (elapsed < TimeSpan.Zero)
+            elapsed = TimeSpan.Zero;
+        return elapsed >= interval ? TimeSpan.Zero : interval - elapsed;
+    }
+
+    private TimeSpan GetRotationInterval() =>
+        TimeSpan.FromMinutes(Math.Max(1, _settings.IntervalMinutes));
+
+    private static string FormatDelay(TimeSpan delay)
+    {
+        if (delay.TotalHours >= 1)
+            return $"{(int)delay.TotalHours} 小时 {delay.Minutes} 分钟";
+        return $"{Math.Max(1, (int)Math.Ceiling(delay.TotalMinutes))} 分钟";
+    }
+
+    public static bool TryValidateSettings(AppSettings settings, out string error)
+    {
+        if (settings.IntervalMinutes < 1)
+        {
+            error = "轮换间隔必须大于 0 分钟。";
+            return false;
+        }
+
+        var hasAllowedPurity = settings.IncludeSfw ||
+                               settings.IncludeSketchy ||
+                               (settings.IncludeNsfw && !string.IsNullOrWhiteSpace(settings.ApiKey));
+        if (!hasAllowedPurity)
+        {
+            error = "没有可用的内容纯度。";
+            return false;
+        }
+
+        if (!settings.IncludeGeneral && !settings.IncludeAnime && !settings.IncludePeople)
+        {
+            error = "没有选择壁纸分类。";
+            return false;
+        }
+
+        error = string.Empty;
+        return true;
     }
 
     public string? SaveCurrentWallpaper()
@@ -96,22 +275,30 @@ public sealed class WallpaperOrchestrator : IAsyncDisposable
         return destination;
     }
 
-    private void RestartScheduler()
+    private void RestartScheduler(TimeSpan initialDelay)
     {
         _schedulerCancellation.Cancel();
         _schedulerCancellation.Dispose();
         _schedulerCancellation = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
-        _schedulerTask = RunSchedulerAsync(_schedulerCancellation.Token);
+        _schedulerTask = TryValidateSettings(_settings, out _) && _settings.ScheduleEnabled
+            ? RunSchedulerAsync(initialDelay, _schedulerCancellation.Token)
+            : Task.CompletedTask;
     }
 
-    private async Task RunSchedulerAsync(CancellationToken cancellationToken)
+    private async Task RunSchedulerAsync(TimeSpan initialDelay, CancellationToken cancellationToken)
     {
         if (!_settings.ScheduleEnabled)
             return;
 
-        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(Math.Max(1, _settings.IntervalMinutes)));
         try
         {
+            if (initialDelay > TimeSpan.Zero)
+                await Task.Delay(initialDelay, cancellationToken);
+
+            if (!cancellationToken.IsCancellationRequested)
+                await RunNowAsync(cancellationToken);
+
+            using var timer = new PeriodicTimer(GetRotationInterval());
             while (await timer.WaitForNextTickAsync(cancellationToken))
                 await RunNowAsync(cancellationToken);
         }
