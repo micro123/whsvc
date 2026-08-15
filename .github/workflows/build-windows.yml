@@ -141,3 +141,34 @@ jobs:
           path: ${{ steps.package.outputs.archive_path }}
           if-no-files-found: error
           retention-days: 30
+
+  release:
+    name: Create GitHub release
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+
+    steps:
+      - name: Download Windows installer
+        uses: actions/download-artifact@v4
+        with:
+          name: WallhavenService-installer-${{ github.run_number }}
+          path: release
+
+      - name: Download Windows package
+        uses: actions/download-artifact@v4
+        with:
+          name: WallhavenService-win-x64-${{ github.run_number }}
+          path: release
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" release/* \
+            --repo "${{ github.repository }}" \
+            --title "Wallhaven Service ${{ github.ref_name }}" \
+            --generate-notes
