@@ -1,0 +1,92 @@
+<Window
+    x:Class="WallhavenService.ImagePreviewWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0"
+                Background="{ThemeResource LayerFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="24,16">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Spacing="3">
+                    <TextBlock x:Name="TitleText"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                    <TextBlock x:Name="SubtitleText"
+                               Style="{StaticResource SectionDescriptionStyle}" />
+                </StackPanel>
+                <Button Grid.Column="1"
+                        Content="关闭"
+                        MinWidth="78"
+                        Click="CloseButton_OnClick"
+                        AutomationProperties.Name="关闭大图预览" />
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1" Background="{ThemeResource LayerFillColorAltBrush}">
+            <ScrollViewer x:Name="ImageScrollViewer"
+                          HorizontalScrollBarVisibility="Hidden"
+                          VerticalScrollBarVisibility="Hidden"
+                          HorizontalScrollMode="Disabled"
+                          VerticalScrollMode="Disabled"
+                          ZoomMode="Enabled"
+                          MinZoomFactor="0.25"
+                          MaxZoomFactor="4"
+                          PointerWheelChanged="ImageScrollViewer_OnPointerWheelChanged"
+                          PointerPressed="ImageScrollViewer_OnPointerPressed"
+                          PointerMoved="ImageScrollViewer_OnPointerMoved"
+                          PointerReleased="ImageScrollViewer_OnPointerReleased"
+                          PointerCanceled="ImageScrollViewer_OnPointerCanceled"
+                          PointerCaptureLost="ImageScrollViewer_OnPointerCaptureLost"
+                          DoubleTapped="ImageScrollViewer_OnDoubleTapped">
+                <Grid x:Name="ImageCanvas"
+                      MinWidth="720"
+                      MinHeight="460">
+                    <Image x:Name="FullImage"
+                           Stretch="Uniform"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           AutomationProperties.Name="壁纸原图" />
+                    <TextBlock x:Name="LoadingText"
+                               Text="正在加载原图…"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center" />
+                </Grid>
+            </ScrollViewer>
+        </Grid>
+
+        <Border Grid.Row="2"
+                Background="{ThemeResource LayerFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="24,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="滚轮缩放 · 左键拖动 · 双击切换 100% / 200%"
+                           Style="{StaticResource SectionDescriptionStyle}" />
+                <TextBlock x:Name="ZoomText"
+                           Grid.Column="1"
+                           Text="100%"
+                           FontFamily="Consolas"
+                           FontWeight="SemiBold"
+                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

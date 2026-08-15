@@ -9,11 +9,18 @@ using Windows.Graphics;
 using Windows.Storage.Streams;
 using WallhavenService.Models;
 using WallhavenService.Services;
+using System.Runtime.InteropServices;
+using WinRT.Interop;
+using Microsoft.UI.Xaml.Input;
+using System.Text;
 
 namespace WallhavenService;
 
 public sealed partial class MainWindow : Window
 {
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr hWnd);
+
     private readonly WallpaperOrchestrator _orchestrator;
     private readonly NotificationService _notificationService;
     private readonly TrayIconService _trayIcon;
@@ -21,6 +28,9 @@ public sealed partial class MainWindow : Window
     private readonly HttpClient _previewClient = new();
     private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _countdownTimer;
     private CancellationTokenSource? _previewCancellation;
+    private ImagePreviewWindow? _imagePreviewWindow;
+    private readonly StringBuilder _logBuffer = new();
+    private LogWindow? _logWindow;
     private WallpaperItem? _displayedWallpaper;
     private bool _allowClose;
     private bool _started;
@@ -47,11 +57,30 @@ public sealed partial class MainWindow : Window
     {
         Title = "Wallhaven 壁纸服务";
         SystemBackdrop = new MicaBackdrop();
-        AppWindow.Resize(new SizeInt32(1440, 900));
+
+        // AppWindow.Resize 使用物理像素，XAML 布局使用有效像素。
+        // 按当前 DPI 缩放换算，避免高 DPI 下窗口看起来过小并裁剪布局。
+        var dpi = GetDpiForWindow(WindowNative.GetWindowHandle(this));
+        var scale = dpi > 0 ? dpi / 96d : 1d;
+        AppWindow.Resize(ToPhysicalSize(1440, 900, scale));
+
+        if (AppWindow.Presenter is OverlappedPresenter presenter)
+        {
+            presenter.PreferredMinimumWidth = ToPhysicalPixels(1320, scale);
+            presenter.PreferredMinimumHeight = ToPhysicalPixels(820, scale);
+        }
+
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "App.ico"));
         AppWindow.Closing += AppWindow_OnClosing;
         CenterWindow();
     }
+
+    private static SizeInt32 ToPhysicalSize(double width, double height, double scale) =>
+        new(ToPhysicalPixels(width, scale), ToPhysicalPixels(height, scale));
+
+    private static int ToPhysicalPixels(double value, double scale) =>
+        (int)Math.Round(value * scale);
+
 
     private void CenterWindow()
     {
@@ -427,6 +456,38 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void OpenLogButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_logWindow is not null)
+        {
+            _logWindow.Activate();
+            return;
+        }
+
+        var logWindow = new LogWindow(this);
+        _logWindow = logWindow;
+        logWindow.SetLogText(_logBuffer.ToString());
+        logWindow.Closed += (_, _) => _logWindow = null;
+        logWindow.Activate();
+    }
+
+    private void PreviewBorder_OnTapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (_displayedWallpaper is null || CurrentWallpaperImage.Source is null)
+            return;
+
+        if (_imagePreviewWindow is not null)
+        {
+            _imagePreviewWindow.Activate();
+            return;
+        }
+
+        var previewWindow = new ImagePreviewWindow(_displayedWallpaper, this, _orchestrator.CurrentWallpaperPath);
+        _imagePreviewWindow = previewWindow;
+        previewWindow.Closed += (_, _) => _imagePreviewWindow = null;
+        previewWindow.Activate();
+    }
+
     private void SaveImageButton_OnClick(object sender, RoutedEventArgs e) => SaveCurrentWallpaper();
 
     private void CopyUrlButton_OnClick(object sender, RoutedEventArgs e)
@@ -452,8 +513,8 @@ public sealed partial class MainWindow : Window
     private void UpdateStatus(string status)
     {
         StatusText.Text = status;
-        LogTextBox.Text += $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {status}{Environment.NewLine}";
-        LogTextBox.Select(LogTextBox.Text.Length, 0);
+        _logBuffer.AppendLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {status}");
+        _logWindow?.SetLogText(_logBuffer.ToString());
     }
 
     private void ShowFromTray()
@@ -482,6 +543,10 @@ public sealed partial class MainWindow : Window
         _allowClose = true;
         _countdownTimer.Stop();
         _previewCancellation?.Cancel();
+        _imagePreviewWindow?.Close();
+        _logWindow?.Close();
+        _logWindow = null;
+        _imagePreviewWindow = null;
         _previewClient.Dispose();
         _trayIcon.Dispose();
         _notificationService.Dispose();

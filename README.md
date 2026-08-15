@@ -68,3 +68,13 @@ dotnet run --project .\WallhavenService.csproj -c Debug -p:Platform=x64
 ```
 
 其中包含设置、当前壁纸缓存和下载文件。
+## GitHub Actions 安装包
+
+项目中的 `.github/workflows/build-windows.yml` 会自动编译 Windows x64 self-contained 包，并生成两种 Artifacts：
+
+- `WallhavenService-win-x64-数字`：绿色免安装 ZIP 包
+- `WallhavenService-installer-数字`：Inno Setup 安装程序
+
+在安装向导的“附加选项”页面可以选择“开机时自动启动 Wallhaven 壁纸服务”。该选项使用当前用户的启动目录，不需要管理员权限。
+
+触发 GitHub Actions 后，在仓库的 **Actions → Build Windows self-contained** 运行记录底部即可下载。

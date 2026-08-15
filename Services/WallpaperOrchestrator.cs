@@ -54,6 +54,7 @@ public sealed class WallpaperOrchestrator : IAsyncDisposable
                 return _nextRotationUtc;
         }
     }
+    public string? CurrentWallpaperPath => _currentWallpaperPath;
     public bool HasCurrentWallpaper =>
         _currentWallpaper is not null &&
         _currentWallpaperPath is not null &&
@@ -77,20 +78,21 @@ public sealed class WallpaperOrchestrator : IAsyncDisposable
         }
 
         var remainingDelay = GetRemainingRotationDelay();
-        if (cacheRestored && remainingDelay > TimeSpan.Zero)
+        var hasRotationCountdown = cacheRestored && remainingDelay > TimeSpan.Zero;
+        if (hasRotationCountdown)
         {
             Report($"已恢复当前壁纸 {_currentWallpaper!.Id}，距离下次轮换还有 {FormatDelay(remainingDelay)}");
         }
         else
         {
-            await RunNowAsync(cancellationToken);
-            remainingDelay = GetRotationInterval();
+            var succeeded = await RunNowAsync(cancellationToken);
+            hasRotationCountdown = succeeded;
+            remainingDelay = succeeded ? GetRotationInterval() : RetryDelays[^1];
         }
 
         if (_settings.ScheduleEnabled && !cancellationToken.IsCancellationRequested)
-            RestartScheduler(remainingDelay);
+            RestartScheduler(remainingDelay, hasRotationCountdown);
     }
-
     public void UpdateSettings(AppSettings settings)
     {
         var wasScheduleEnabled = _settings.ScheduleEnabled;
@@ -99,7 +101,7 @@ public sealed class WallpaperOrchestrator : IAsyncDisposable
             _consecutiveFailures = 0;
         _settingsStore.Save(settings);
         if (Volatile.Read(ref _started) != 0)
-            RestartScheduler(GetRotationInterval());
+            RestartScheduler(GetRotationInterval(), _currentWallpaper is not null && HasCurrentWallpaper);
         Report("设置已保存");
     }
 
@@ -117,12 +119,12 @@ public sealed class WallpaperOrchestrator : IAsyncDisposable
             : $"下一次搜索将使用一次性关键词：{configuredKeyword}");
     }
 
-    public async Task RunNowAsync(CancellationToken cancellationToken = default)
+    public async Task<bool> RunNowAsync(CancellationToken cancellationToken = default)
     {
         if (!await _runLock.WaitAsync(0, cancellationToken))
         {
             Report("已有抓取任务正在运行");
-            return;
+            return false;
         }
 
         var countFailure = _settings.ScheduleEnabled;
@@ -144,10 +146,12 @@ public sealed class WallpaperOrchestrator : IAsyncDisposable
             }
             Report($"壁纸更新成功：{item.Id} / {item.Resolution} / {item.Purity}");
             WallpaperUpdated?.Invoke(this, item);
+            return true;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             Report("抓取已取消");
+            return false;
         }
         catch (Exception ex)
         {
@@ -172,13 +176,14 @@ public sealed class WallpaperOrchestrator : IAsyncDisposable
                 Report("连续失败 5 次，自动轮换已禁用");
                 AutoRotationDisabled?.Invoke(this, EventArgs.Empty);
             }
+
+            return false;
         }
         finally
         {
             _runLock.Release();
         }
     }
-
     private async Task<(WallpaperItem Wallpaper, string ImagePath)> SearchAndApplyWithRetryAsync(
         string searchTag,
         CancellationToken cancellationToken)
@@ -323,7 +328,7 @@ public sealed class WallpaperOrchestrator : IAsyncDisposable
         return destination;
     }
 
-    private void RestartScheduler(TimeSpan initialDelay)
+    private void RestartScheduler(TimeSpan initialDelay, bool hasRotationCountdown = true)
     {
         _schedulerCancellation.Cancel();
         _schedulerCancellation.Dispose();
@@ -337,7 +342,12 @@ public sealed class WallpaperOrchestrator : IAsyncDisposable
             return;
         }
 
-        _schedulerTask = RunSchedulerAsync(initialDelay, scheduleVersion, _schedulerCancellation.Token);
+        var normalizedDelay = initialDelay < TimeSpan.Zero ? TimeSpan.Zero : initialDelay;
+        DateTimeOffset? nextRotation = hasRotationCountdown && normalizedDelay > TimeSpan.Zero
+            ? DateTimeOffset.UtcNow + normalizedDelay
+            : null;
+        SetNextRotationUtc(scheduleVersion, nextRotation);
+        _schedulerTask = RunSchedulerAsync(normalizedDelay, scheduleVersion, _schedulerCancellation.Token);
     }
 
     private async Task RunSchedulerAsync(
@@ -350,7 +360,6 @@ public sealed class WallpaperOrchestrator : IAsyncDisposable
             var delay = initialDelay < TimeSpan.Zero ? TimeSpan.Zero : initialDelay;
             while (!cancellationToken.IsCancellationRequested && _settings.ScheduleEnabled)
             {
-                SetNextRotationUtc(scheduleVersion, DateTimeOffset.UtcNow + delay);
                 if (delay > TimeSpan.Zero)
                     await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
 
@@ -358,8 +367,17 @@ public sealed class WallpaperOrchestrator : IAsyncDisposable
                 if (cancellationToken.IsCancellationRequested || !_settings.ScheduleEnabled)
                     break;
 
-                await RunNowAsync(cancellationToken).ConfigureAwait(false);
-                delay = GetRotationInterval();
+                var succeeded = await RunNowAsync(cancellationToken).ConfigureAwait(false);
+                if (succeeded)
+                {
+                    delay = GetRotationInterval();
+                    SetNextRotationUtc(scheduleVersion, DateTimeOffset.UtcNow + delay);
+                }
+                else
+                {
+                    // 失败后的 30 秒仅用于再次尝试，不作为下一次成功轮换的倒计时。
+                    delay = RetryDelays[^1];
+                }
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -370,7 +388,6 @@ public sealed class WallpaperOrchestrator : IAsyncDisposable
             SetNextRotationUtc(scheduleVersion, null);
         }
     }
-
     private void SetNextRotationUtc(long scheduleVersion, DateTimeOffset? value)
     {
         lock (_scheduleStateLock)
