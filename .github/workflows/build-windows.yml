@@ -77,6 +77,17 @@ jobs:
         shell: pwsh
         run: choco install innosetup --yes --no-progress
 
+      - name: Download Chinese installer language
+        shell: pwsh
+        run: |
+          $languageFile = Join-Path $env:GITHUB_WORKSPACE "installer\ChineseSimplified.isl"
+          Invoke-WebRequest `
+            -Uri "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/ChineseSimplified.isl" `
+            -OutFile $languageFile
+          if (-not (Test-Path -LiteralPath $languageFile)) {
+            throw "ChineseSimplified.isl was not downloaded."
+          }
+
       - name: Build Windows installer
         id: installer
         shell: pwsh
@@ -104,6 +115,7 @@ jobs:
             "/DAppVersion=$version" `
             "/DSourceDir=$env:PUBLISH_DIRECTORY" `
             "/DOutputDir=$env:INSTALLER_DIRECTORY" `
+            "/DLanguageFile=$env:GITHUB_WORKSPACE\installer\ChineseSimplified.isl" `
             $scriptPath
           if ($LASTEXITCODE -ne 0) {
             throw "Inno Setup failed with exit code $LASTEXITCODE."

@@ -5,6 +5,10 @@
   #define AppVersion "0.1.0"
 #endif
 
+#ifndef LanguageFile
+  #define LanguageFile "compiler:Default.isl"
+#endif
+
 #ifndef SourceDir
   #define SourceDir "..\artifacts\publish\win-x64"
 #endif
@@ -35,7 +39,7 @@ UninstallDisplayIcon={app}\Assets\App.ico
 Uninstallable=yes
 
 [Languages]
-Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+Name: "chinesesimplified"; MessagesFile: "{#LanguageFile}"
 
 [Tasks]
 Name: "startup"; Description: "开机时自动启动 Wallhaven 壁纸服务"; GroupDescription: "附加选项:"; Flags: unchecked
