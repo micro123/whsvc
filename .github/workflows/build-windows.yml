@@ -55,6 +55,27 @@ jobs:
           -p:WindowsAppSDKSelfContained=true
           -p:PublishSingleFile=false
 
+
+      - name: Validate WinUI publish output
+        shell: pwsh
+        run: |
+          $requiredFiles = @(
+            "WallhavenService.exe",
+            "WallhavenService.pri",
+            "App.xbf",
+            "MainWindow.xbf",
+            "ImagePreviewWindow.xbf",
+            "LogWindow.xbf"
+          )
+
+          $missingFiles = $requiredFiles | Where-Object {
+            -not (Test-Path -LiteralPath (Join-Path $env:PUBLISH_DIRECTORY $_) -PathType Leaf)
+          }
+
+          if ($missingFiles) {
+            throw "Published WinUI files are missing: $($missingFiles -join ', ')"
+          }
+
       - name: Create ZIP package
         id: package
         shell: pwsh

@@ -23,4 +23,25 @@
   <ItemGroup>
     <Content Include="Assets\App.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <!--
+    The WinUI build targets copy the app PRI/XBF files to TargetDir, but the
+    .NET publish pipeline does not automatically include them when a custom
+    publish output directory is used. Without these files the executable
+    crashes in Microsoft.UI.Xaml.dll before the first window is shown.
+  -->
+  <Target Name="IncludeWinUIAssetsInPublish"
+          AfterTargets="ComputeFilesToPublish"
+          Condition="'$(PublishSingleFile)' != 'true'">
+    <ItemGroup>
+      <_WinUIAssetToPublish Include="$(TargetDir)**\*.xbf" />
+      <_WinUIAssetToPublish Include="$(TargetDir)$(AssemblyName).pri"
+                            Condition="Exists('$(TargetDir)$(AssemblyName).pri')" />
+
+      <ResolvedFileToPublish Include="@(_WinUIAssetToPublish)">
+        <RelativePath>%(_WinUIAssetToPublish.RecursiveDir)%(_WinUIAssetToPublish.Filename)%(_WinUIAssetToPublish.Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
 </Project>
