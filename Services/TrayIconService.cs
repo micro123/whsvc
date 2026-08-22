@@ -14,6 +14,8 @@ public sealed class TrayIconService : IDisposable
 
     private const uint WmApp = 0x8000;
     private const uint WmCommand = 0x0111;
+    private const uint WmTimer = 0x0113;
+    private const uint WmLButtonUp = 0x0202;
     private const uint WmRButtonUp = 0x0205;
     private const uint WmContextMenu = 0x007B;
     private const uint WmLButtonDblClk = 0x0203;
@@ -41,6 +43,7 @@ public sealed class TrayIconService : IDisposable
     private const int GwlExStyle = -20;
     private const int WsExToolWindow = 0x00000080;
     private const int WsExNoActivate = 0x08000000;
+    private static readonly nuint SingleClickTimerId = 1;
 
     private readonly IntPtr _windowHandle;
     private readonly IntPtr _iconHandle;
@@ -49,6 +52,7 @@ public sealed class TrayIconService : IDisposable
     private NotifyIconData _notifyData;
     private bool _disposed;
     private bool _saveEnabled;
+    private bool _suppressNextLeftButtonUp;
 
     public event EventHandler? OpenRequested;
     public event EventHandler? RunNowRequested;
@@ -125,10 +129,34 @@ public sealed class TrayIconService : IDisposable
         if (message == TrayCallbackMessage)
         {
             var mouseMessage = unchecked((uint)(lParam.ToInt64() & 0xffff));
-            if (mouseMessage == WmLButtonDblClk)
+            if (mouseMessage == WmLButtonUp)
+            {
+                if (_suppressNextLeftButtonUp)
+                {
+                    _suppressNextLeftButtonUp = false;
+                }
+                else
+                {
+                    ScheduleSingleClick();
+                }
+            }
+            else if (mouseMessage == WmLButtonDblClk)
+            {
+                CancelSingleClick();
+                _suppressNextLeftButtonUp = true;
                 OpenRequested?.Invoke(this, EventArgs.Empty);
+            }
             else if (mouseMessage is WmRButtonUp or WmContextMenu)
+            {
                 ShowContextMenu();
+            }
+            return IntPtr.Zero;
+        }
+
+        if (message == WmTimer && unchecked((nuint)wParam.ToInt64()) == SingleClickTimerId)
+        {
+            CancelSingleClick();
+            RunNowRequested?.Invoke(this, EventArgs.Empty);
             return IntPtr.Zero;
         }
 
@@ -140,6 +168,15 @@ public sealed class TrayIconService : IDisposable
 
         return DefWindowProc(hwnd, message, wParam, lParam);
     }
+
+    private void ScheduleSingleClick()
+    {
+        CancelSingleClick();
+        if (SetTimer(_windowHandle, SingleClickTimerId, GetDoubleClickTime(), IntPtr.Zero) == 0)
+            RunNowRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void CancelSingleClick() => KillTimer(_windowHandle, SingleClickTimerId);
 
     private void ShowContextMenu()
     {
@@ -192,6 +229,7 @@ public sealed class TrayIconService : IDisposable
             return;
 
         _disposed = true;
+        CancelSingleClick();
         ShellNotifyIcon(NimDelete, ref _notifyData);
         if (_iconHandle != IntPtr.Zero)
             DestroyIcon(_iconHandle);
@@ -266,6 +304,15 @@ public sealed class TrayIconService : IDisposable
 
     [DllImport("user32.dll")]
     private static extern bool PostMessage(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern nuint SetTimer(IntPtr hwnd, nuint eventId, uint interval, IntPtr timerCallback);
+
+    [DllImport("user32.dll")]
+    private static extern bool KillTimer(IntPtr hwnd, nuint eventId);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDoubleClickTime();
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr LoadImage(IntPtr instance, string name, uint type, int width, int height, uint load);

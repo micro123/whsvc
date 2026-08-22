@@ -15,10 +15,6 @@
                 BorderThickness="0,0,0,1"
                 Padding="32,20">
             <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
                 <StackPanel Spacing="4">
                     <TextBlock Text="Wallhaven 壁纸服务"
                                FontSize="22"
@@ -27,14 +23,6 @@
                     <TextBlock Text="自动发现、下载并定时轮换高质量桌面壁纸"
                                Style="{StaticResource SectionDescriptionStyle}" />
                 </StackPanel>
-                <Button x:Name="RunButton"
-                        Grid.Column="1"
-                        Content="立即抓取"
-                        MinWidth="128"
-                        Height="40"
-                        Style="{StaticResource AccentButtonStyle}"
-                        Click="RunButton_OnClick"
-                        AutomationProperties.Name="立即抓取壁纸" />
             </Grid>
         </Border>
 
@@ -169,8 +157,7 @@
                                     <TextBlock Text="自动轮换" Style="{StaticResource SectionTitleStyle}" />
                                     <TextBlock Text="设置轮换周期和下一轮临时搜索条件" Style="{StaticResource SectionDescriptionStyle}" />
                                 </StackPanel>
-                                <Button Grid.Column="1"
-                                        Content="保存设置"
+                                <Button Grid.Column="1" Content="保存设置"
                                         Width="116"
                                         Style="{StaticResource AccentButtonStyle}"
                                         Click="SaveButton_OnClick"
@@ -198,6 +185,19 @@
                                          PlaceholderText="30"
                                          Style="{StaticResource FormTextBoxStyle}" />
                                 <TextBlock Grid.Row="0" Grid.Column="2" Text="分钟" Style="{StaticResource FieldLabelStyle}" Margin="0,0,0,4" />
+                                <Button x:Name="RunButton"
+                                        Grid.Row="0"
+                                        Grid.Column="3"
+                                        Content="立即抓取"
+                                        Width="116"
+                                        Margin="0,0,0,4"
+                                        HorizontalAlignment="Right"
+                                        Style="{StaticResource AccentButtonStyle}"
+                                        Background="#107C10"
+                                        BorderBrush="#107C10"
+                                        Foreground="White"
+                                        Click="RunButton_OnClick"
+                                        AutomationProperties.Name="立即抓取壁纸" />
 
                                 <TextBlock Grid.Row="1" Grid.Column="0" Text="下一次关键词" Style="{StaticResource FieldLabelStyle}" />
                                 <TextBox x:Name="NextSearchKeywordBox"

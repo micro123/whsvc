@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
 using Windows.Graphics;
 using Windows.Storage.Streams;
@@ -29,6 +30,8 @@ public sealed partial class ImagePreviewWindow : Window
     private readonly Window _owner;
     private readonly string? _localImagePath;
     private readonly HttpClient _httpClient = new();
+    private byte[]? _imageBytes;
+    private InMemoryRandomAccessStream? _clipboardImageStream;
     private bool _isPanning;
     private uint _panPointerId;
     private Point _panStartPoint;
@@ -97,6 +100,7 @@ public sealed partial class ImagePreviewWindow : Window
             var imageBytes = !string.IsNullOrWhiteSpace(_localImagePath) && File.Exists(_localImagePath)
                 ? await File.ReadAllBytesAsync(_localImagePath)
                 : await _httpClient.GetByteArrayAsync(_wallpaper.ImageUrl);
+            _imageBytes = imageBytes;
 
             using var stream = new InMemoryRandomAccessStream();
             using (var writer = new DataWriter(stream))
@@ -112,6 +116,7 @@ public sealed partial class ImagePreviewWindow : Window
             FullImage.Source = image;
             _centerInitialViewPending = true;
             LoadingText.Visibility = Visibility.Collapsed;
+            CopyImageMenuItem.IsEnabled = true;
         }
         catch (Exception ex)
         {
@@ -240,10 +245,52 @@ public sealed partial class ImagePreviewWindow : Window
 
     private void UpdateZoomText(float zoomFactor) => ZoomText.Text = $"{zoomFactor * 100:0}%";
 
+    private async void CopyImageMenuItem_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_imageBytes is null)
+            return;
+
+        CopyImageMenuItem.IsEnabled = false;
+        InMemoryRandomAccessStream? clipboardStream = null;
+
+        try
+        {
+            clipboardStream = new InMemoryRandomAccessStream();
+            using (var writer = new DataWriter(clipboardStream))
+            {
+                writer.WriteBytes(_imageBytes);
+                await writer.StoreAsync();
+                writer.DetachStream();
+            }
+
+            clipboardStream.Seek(0);
+            var package = new DataPackage();
+            package.SetBitmap(RandomAccessStreamReference.CreateFromStream(clipboardStream));
+            Clipboard.SetContent(package);
+            Clipboard.Flush();
+
+            _clipboardImageStream?.Dispose();
+            _clipboardImageStream = clipboardStream;
+            clipboardStream = null;
+            CopyStatusText.Text = "图片已复制";
+        }
+        catch (Exception ex)
+        {
+            CopyStatusText.Text = $"复制失败：{ex.Message}";
+        }
+        finally
+        {
+            clipboardStream?.Dispose();
+            CopyStatusText.Visibility = Visibility.Visible;
+            CopyImageMenuItem.IsEnabled = _imageBytes is not null;
+        }
+    }
+
     private void CloseButton_OnClick(object sender, RoutedEventArgs e) => Close();
 
     private void PreviewWindow_Closed(object sender, WindowEventArgs args)
     {
+        _clipboardImageStream?.Dispose();
         _httpClient.Dispose();
     }
 

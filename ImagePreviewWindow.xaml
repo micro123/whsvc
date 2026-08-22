@@ -54,6 +54,18 @@
                 <Grid x:Name="ImageCanvas"
                       MinWidth="720"
                       MinHeight="460">
+                    <Grid.ContextFlyout>
+                        <MenuFlyout>
+                            <MenuFlyoutItem x:Name="CopyImageMenuItem"
+                                            Text="复制图片"
+                                            IsEnabled="False"
+                                            Click="CopyImageMenuItem_OnClick">
+                                <MenuFlyoutItem.Icon>
+                                    <SymbolIcon Symbol="Copy" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                        </MenuFlyout>
+                    </Grid.ContextFlyout>
                     <Image x:Name="FullImage"
                            Stretch="Uniform"
                            HorizontalAlignment="Center"
@@ -77,11 +89,18 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Text="滚轮缩放 · 左键拖动 · 双击切换 100% / 200%"
+                <TextBlock Text="滚轮缩放 · 左键拖动 · 双击切换 100% / 200% · 右键复制图片"
                            Style="{StaticResource SectionDescriptionStyle}" />
-                <TextBlock x:Name="ZoomText"
+                <TextBlock x:Name="CopyStatusText"
                            Grid.Column="1"
+                           Margin="16,0"
+                           Visibility="Collapsed"
+                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                           AutomationProperties.LiveSetting="Polite" />
+                <TextBlock x:Name="ZoomText"
+                           Grid.Column="2"
                            Text="100%"
                            FontFamily="Consolas"
                            FontWeight="SemiBold"

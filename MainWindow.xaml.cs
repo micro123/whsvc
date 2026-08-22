@@ -517,6 +517,8 @@ public sealed partial class MainWindow : Window
         _logWindow?.SetLogText(_logBuffer.ToString());
     }
 
+    internal void ShowFromExternalActivation() => ShowFromTray();
+
     private void ShowFromTray()
     {
         AppWindow.Show();

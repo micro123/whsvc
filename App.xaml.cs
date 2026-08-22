@@ -7,6 +7,7 @@ public partial class App : Application
 {
     private MainWindow? _mainWindow;
     private bool _shutdownStarted;
+    private bool _activationPending;
 
     public WallpaperOrchestrator Orchestrator { get; } = new();
 
@@ -20,6 +21,26 @@ public partial class App : Application
     {
         _mainWindow = new MainWindow(Orchestrator, ShutdownAsync);
         _mainWindow.Activate();
+
+        if (_activationPending)
+        {
+            _activationPending = false;
+            _mainWindow.ShowFromExternalActivation();
+        }
+    }
+
+    internal void ActivateMainWindow()
+    {
+        if (_shutdownStarted)
+            return;
+
+        if (_mainWindow is null)
+        {
+            _activationPending = true;
+            return;
+        }
+
+        _mainWindow.ShowFromExternalActivation();
     }
 
     private void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)

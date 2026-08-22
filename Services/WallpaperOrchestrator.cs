@@ -71,6 +71,14 @@ public sealed class WallpaperOrchestrator : IAsyncDisposable
             return;
 
         var cacheRestored = TryRestoreCurrentWallpaper();
+        if (!_settings.ScheduleEnabled)
+        {
+            Report(cacheRestored
+                ? $"已恢复当前壁纸 {_currentWallpaper!.Id}；自动轮换已禁用，启动时不搜索或更换壁纸"
+                : "自动轮换已禁用，启动时不搜索或更换壁纸");
+            return;
+        }
+
         if (!TryValidateSettings(_settings, out var validationError))
         {
             Report($"启动搜索未执行：{validationError}");
