@@ -1,3 +1,4 @@
+using Microsoft.Win32;
 using System.Runtime.InteropServices;
 
 namespace WallhavenService.Services;
@@ -25,6 +26,9 @@ public sealed class TrayIconService : IDisposable
     private const uint NidMessage = 0x00000001;
     private const uint NidIcon = 0x00000002;
     private const uint NidTip = 0x00000004;
+    private const uint NidGuid = 0x00000020;
+    private const uint NidShowTip = 0x00000080;
+    private const uint DefaultNotifyFlags = NidMessage | NidIcon | NidTip | NidGuid | NidShowTip;
     private const uint NimAdd = 0x00000000;
     private const uint NimModify = 0x00000001;
     private const uint NimDelete = 0x00000002;
@@ -43,6 +47,9 @@ public sealed class TrayIconService : IDisposable
     private const int GwlExStyle = -20;
     private const int WsExToolWindow = 0x00000080;
     private const int WsExNoActivate = 0x08000000;
+    private const string InstallerRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\{D8B3E5A0-3F92-4F08-B1E5-9E49B5C9A8F2}_is1";
+    private static readonly Guid InstalledTrayIconGuid = new("e4ed9104-38ff-4d0d-8e4b-b8d3b3a5c906");
+    private static readonly Guid DevelopmentTrayIconGuid = new("503973b3-026f-47e1-9246-f05b5a7431ee");
     private static readonly nuint SingleClickTimerId = 1;
 
     private readonly IntPtr _windowHandle;
@@ -101,10 +108,11 @@ public sealed class TrayIconService : IDisposable
             cbSize = (uint)Marshal.SizeOf<NotifyIconData>(),
             hWnd = _windowHandle,
             uID = 1,
-            uFlags = NidMessage | NidIcon | NidTip,
+            uFlags = DefaultNotifyFlags,
             uCallbackMessage = TrayCallbackMessage,
             hIcon = _iconHandle,
-            szTip = "Wallhaven 壁纸服务"
+            szTip = "Wallhaven 壁纸服务",
+            guidItem = ResolveTrayIconGuid()
         };
 
         if (!ShellNotifyIcon(NimAdd, ref _notifyData))
@@ -118,10 +126,12 @@ public sealed class TrayIconService : IDisposable
 
     public void SetToolTip(string text)
     {
-        _notifyData.szTip = string.IsNullOrWhiteSpace(text) ? "Wallhaven 壁纸服务" : text;
-        _notifyData.uFlags = NidTip;
+        const int maximumToolTipLength = 127;
+        var toolTip = string.IsNullOrWhiteSpace(text) ? "Wallhaven 壁纸服务" : text.Trim();
+        _notifyData.szTip = toolTip.Length <= maximumToolTipLength ? toolTip : toolTip[..maximumToolTipLength];
+        _notifyData.uFlags = NidTip | NidGuid | NidShowTip;
         ShellNotifyIcon(NimModify, ref _notifyData);
-        _notifyData.uFlags = NidMessage | NidIcon | NidTip;
+        _notifyData.uFlags = DefaultNotifyFlags;
     }
 
     private IntPtr WindowProcedure(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam)
@@ -222,6 +232,28 @@ public sealed class TrayIconService : IDisposable
                 break;
         }
     }
+    private static Guid ResolveTrayIconGuid()
+    {
+        try
+        {
+            using var uninstallKey = Registry.CurrentUser.OpenSubKey(InstallerRegistryPath);
+            var installLocation = uninstallKey?.GetValue("InstallLocation") as string;
+            if (!string.IsNullOrWhiteSpace(installLocation))
+            {
+                var currentDirectory = Path.GetFullPath(AppContext.BaseDirectory)
+                    .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                var installedDirectory = Path.GetFullPath(installLocation)
+                    .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                if (string.Equals(currentDirectory, installedDirectory, StringComparison.OrdinalIgnoreCase))
+                    return InstalledTrayIconGuid;
+            }
+        }
+        catch
+        {
+        }
+
+        return DevelopmentTrayIconGuid;
+    }
 
     public void Dispose()
     {
@@ -230,6 +262,7 @@ public sealed class TrayIconService : IDisposable
 
         _disposed = true;
         CancelSingleClick();
+        _notifyData.uFlags = NidGuid;
         ShellNotifyIcon(NimDelete, ref _notifyData);
         if (_iconHandle != IntPtr.Zero)
             DestroyIcon(_iconHandle);

@@ -267,9 +267,6 @@ public sealed partial class MainWindow : Window
             var canSave = _orchestrator.HasCurrentWallpaper;
             _trayIcon.SetSaveEnabled(canSave);
             SaveImageButton.IsEnabled = canSave;
-            _trayIcon.SetToolTip(status.StartsWith("抓取失败", StringComparison.Ordinal)
-                ? "Wallhaven 壁纸服务 - 抓取失败"
-                : "Wallhaven 壁纸服务");
         });
 
     private void Orchestrator_OnSearchStarting(object? sender, string searchTag)
@@ -375,6 +372,7 @@ public sealed partial class MainWindow : Window
     private void UpdateWallpaperDetails(WallpaperItem wallpaper)
     {
         _displayedWallpaper = wallpaper;
+        UpdateTrayToolTip(wallpaper);
         CurrentTagText.Text = wallpaper.SearchTag;
         CurrentIdText.Text = wallpaper.Id;
         CurrentResolutionText.Text = wallpaper.Resolution;
@@ -393,6 +391,15 @@ public sealed partial class MainWindow : Window
         SaveImageButton.IsEnabled = _orchestrator.HasCurrentWallpaper;
         CopyUrlButton.IsEnabled = true;
         OpenUrlButton.IsEnabled = true;
+    }
+
+    private void UpdateTrayToolTip(WallpaperItem wallpaper)
+    {
+        var searchTag = string.IsNullOrWhiteSpace(wallpaper.SearchTag)
+            ? "无"
+            : wallpaper.SearchTag.Trim();
+        _trayIcon.SetToolTip(
+            $"Wallhaven 壁纸服务\n壁纸：{wallpaper.Id} · {wallpaper.Resolution}\n纯度：{wallpaper.Purity.ToUpperInvariant()} · 关键词：{searchTag}");
     }
 
     private async Task LoadWallpaperPreviewAsync(WallpaperItem wallpaper, string failurePrefix)
