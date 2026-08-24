@@ -264,10 +264,22 @@ public sealed partial class ImagePreviewWindow : Window
             }
 
             clipboardStream.Seek(0);
-            var package = new DataPackage();
+            var package = new DataPackage
+            {
+                RequestedOperation = DataPackageOperation.Copy
+            };
             package.SetBitmap(RandomAccessStreamReference.CreateFromStream(clipboardStream));
             Clipboard.SetContent(package);
-            Clipboard.Flush();
+            try
+            {
+                Clipboard.Flush();
+            }
+            catch
+            {
+                var content = Clipboard.GetContent();
+                if (!content.Contains(StandardDataFormats.Bitmap))
+                    throw;
+            }
 
             _clipboardImageStream?.Dispose();
             _clipboardImageStream = clipboardStream;

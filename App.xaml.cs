@@ -26,7 +26,11 @@ public partial class App : Application
         {
             _activationPending = false;
             _mainWindow.ShowFromExternalActivation();
+            return;
         }
+
+        if (Orchestrator.Settings.StartMinimized)
+            _mainWindow.HideOnStartup();
     }
 
     internal void ActivateMainWindow()

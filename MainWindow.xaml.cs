@@ -28,6 +28,7 @@ public sealed partial class MainWindow : Window
     private readonly HttpClient _previewClient = new();
     private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _countdownTimer;
     private CancellationTokenSource? _previewCancellation;
+    private InMemoryRandomAccessStream? _clipboardImageStream;
     private ImagePreviewWindow? _imagePreviewWindow;
     private readonly StringBuilder _logBuffer = new();
     private LogWindow? _logWindow;
@@ -127,6 +128,8 @@ public sealed partial class MainWindow : Window
         SelectAspectRatio(settings.AspectRatio);
         ScheduleEnabledBox.IsChecked = settings.ScheduleEnabled;
         IntervalBox.Text = settings.IntervalMinutes.ToString();
+        RotateOnStartupBox.IsChecked = settings.RotateOnStartup;
+        StartMinimizedBox.IsChecked = settings.StartMinimized;
         UpdateNsfwAvailability();
         UpdateRotationCountdown();
     }
@@ -212,6 +215,8 @@ public sealed partial class MainWindow : Window
             MinimumResolution = MinimumResolutionBox.Text.Trim(),
             AspectRatio = (AspectRatioBox.SelectedItem as ComboBoxItem)?.Tag as string ?? string.Empty,
             ScheduleEnabled = ScheduleEnabledBox.IsChecked == true,
+            RotateOnStartup = RotateOnStartupBox.IsChecked == true,
+            StartMinimized = StartMinimizedBox.IsChecked == true,
             IntervalMinutes = interval
         };
 
@@ -387,6 +392,7 @@ public sealed partial class MainWindow : Window
         CurrentPurityText.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
         CurrentWallpaperImage.Source = null;
         WallpaperEmptyText.Text = "正在加载预览…";
+        CopyPreviewImageMenuItem.IsEnabled = false;
         WallpaperEmptyText.Visibility = Visibility.Visible;
         SaveImageButton.IsEnabled = _orchestrator.HasCurrentWallpaper;
         CopyUrlButton.IsEnabled = true;
@@ -439,6 +445,7 @@ public sealed partial class MainWindow : Window
 
                 CurrentWallpaperImage.Source = image;
                 WallpaperEmptyText.Visibility = Visibility.Collapsed;
+                CopyPreviewImageMenuItem.IsEnabled = true;
             });
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
@@ -495,18 +502,95 @@ public sealed partial class MainWindow : Window
         previewWindow.Activate();
     }
 
+    private async void CopyPreviewImageMenuItem_OnClick(object sender, RoutedEventArgs e)
+    {
+        var wallpaper = _displayedWallpaper;
+        if (wallpaper is null)
+            return;
+
+        CopyPreviewImageMenuItem.IsEnabled = false;
+        InMemoryRandomAccessStream? clipboardStream = null;
+        try
+        {
+            var localImagePath = _orchestrator.CurrentWallpaperPath;
+            var imageBytes = !string.IsNullOrWhiteSpace(localImagePath) && File.Exists(localImagePath)
+                ? await File.ReadAllBytesAsync(localImagePath)
+                : await _previewClient.GetByteArrayAsync(wallpaper.ImageUrl);
+
+            if (_displayedWallpaper?.Id != wallpaper.Id)
+                return;
+
+            clipboardStream = new InMemoryRandomAccessStream();
+            using (var writer = new DataWriter(clipboardStream))
+            {
+                writer.WriteBytes(imageBytes);
+                await writer.StoreAsync();
+                writer.DetachStream();
+            }
+
+            clipboardStream.Seek(0);
+            var package = new DataPackage
+            {
+                RequestedOperation = DataPackageOperation.Copy
+            };
+            package.SetBitmap(RandomAccessStreamReference.CreateFromStream(clipboardStream));
+            Clipboard.SetContent(package);
+            try
+            {
+                Clipboard.Flush();
+            }
+            catch
+            {
+                var content = Clipboard.GetContent();
+                if (!content.Contains(StandardDataFormats.Bitmap))
+                    throw;
+            }
+
+            _clipboardImageStream?.Dispose();
+            _clipboardImageStream = clipboardStream;
+            clipboardStream = null;
+            UpdateStatus($"当前壁纸图片已复制：{wallpaper.Id}");
+        }
+        catch (Exception ex)
+        {
+            UpdateStatus($"复制当前壁纸图片失败：{ex.Message}");
+        }
+        finally
+        {
+            clipboardStream?.Dispose();
+            CopyPreviewImageMenuItem.IsEnabled =
+                _displayedWallpaper is not null && CurrentWallpaperImage.Source is not null;
+        }
+    }
+
     private void SaveImageButton_OnClick(object sender, RoutedEventArgs e) => SaveCurrentWallpaper();
 
-    private void CopyUrlButton_OnClick(object sender, RoutedEventArgs e)
+    private async void CopyUrlButton_OnClick(object sender, RoutedEventArgs e)
     {
         if (_displayedWallpaper is null)
             return;
 
-        var package = new DataPackage();
-        package.SetText(_displayedWallpaper.SourceUrl);
-        Clipboard.SetContent(package);
-        Clipboard.Flush();
-        UpdateStatus("壁纸页面 URL 已复制");
+        var sourceUrl = _displayedWallpaper.SourceUrl;
+        CopyUrlButton.IsEnabled = false;
+        try
+        {
+            await ClipboardTextService.SetTextAsync(
+                WindowNative.GetWindowHandle(this), sourceUrl);
+            CopyUrlButton.Content = "已复制";
+            UpdateStatus($"壁纸页面 URL 已复制：{sourceUrl}");
+            await Task.Delay(1200);
+        }
+        catch (Exception ex)
+        {
+            CopyUrlButton.Content = "复制失败";
+            UpdateStatus($"复制壁纸页面 URL 失败：{ex.Message}");
+            await Task.Delay(1800);
+        }
+        finally
+        {
+            CopyUrlButton.Content = "复制页面 URL";
+            CopyUrlButton.IsEnabled = _displayedWallpaper is not null;
+        }
     }
 
     private void OpenUrlButton_OnClick(object sender, RoutedEventArgs e)
@@ -522,6 +606,12 @@ public sealed partial class MainWindow : Window
         StatusText.Text = status;
         _logBuffer.AppendLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {status}");
         _logWindow?.SetLogText(_logBuffer.ToString());
+    }
+
+    internal void HideOnStartup()
+    {
+        AppWindow.Hide();
+        UpdateStatus("已按设置最小化到系统托盘");
     }
 
     internal void ShowFromExternalActivation() => ShowFromTray();
@@ -557,6 +647,8 @@ public sealed partial class MainWindow : Window
         _logWindow = null;
         _imagePreviewWindow = null;
         _previewClient.Dispose();
+        _clipboardImageStream?.Dispose();
+        _clipboardImageStream = null;
         _trayIcon.Dispose();
         _notificationService.Dispose();
         await _shutdownAsync();

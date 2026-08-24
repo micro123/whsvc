@@ -73,9 +73,7 @@ public sealed class WallpaperOrchestrator : IAsyncDisposable
         var cacheRestored = TryRestoreCurrentWallpaper();
         if (!_settings.ScheduleEnabled)
         {
-            Report(cacheRestored
-                ? $"已恢复当前壁纸 {_currentWallpaper!.Id}；自动轮换已禁用，启动时不搜索或更换壁纸"
-                : "自动轮换已禁用，启动时不搜索或更换壁纸");
+            await HandleStartupRotationAsync(cacheRestored, GetRemainingRotationDelay(), cancellationToken);
             return;
         }
 
@@ -100,6 +98,37 @@ public sealed class WallpaperOrchestrator : IAsyncDisposable
 
         if (_settings.ScheduleEnabled && !cancellationToken.IsCancellationRequested)
             RestartScheduler(remainingDelay, hasRotationCountdown);
+    }
+    private async Task HandleStartupRotationAsync(
+        bool cacheRestored,
+        TimeSpan remainingDelay,
+        CancellationToken cancellationToken)
+    {
+        if (!_settings.RotateOnStartup)
+        {
+            Report(cacheRestored
+                ? $"已恢复当前壁纸 {_currentWallpaper!.Id}；自动轮换和启动时轮换均已禁用"
+                : "自动轮换和启动时轮换均已禁用，启动时不搜索或更换壁纸");
+            return;
+        }
+
+        if (cacheRestored && remainingDelay > TimeSpan.Zero)
+        {
+            Report(
+                $"已恢复当前壁纸 {_currentWallpaper!.Id}；尚未过期，距离过期还有 {FormatDelay(remainingDelay)}");
+            return;
+        }
+
+        if (!TryValidateSettings(_settings, out var validationError))
+        {
+            Report($"启动时轮换未执行：{validationError}");
+            return;
+        }
+
+        Report(cacheRestored
+            ? $"当前壁纸 {_currentWallpaper!.Id} 已过期，执行启动时轮换"
+            : "没有可用的当前壁纸，执行启动时轮换");
+        await RunNowAsync(cancellationToken);
     }
     public void UpdateSettings(AppSettings settings)
     {

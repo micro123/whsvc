@@ -175,6 +175,8 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
 
                                 <CheckBox x:Name="ScheduleEnabledBox" Grid.Row="0" Grid.Column="0" Content="启用自动轮换" Margin="0,0,0,4" />
@@ -199,16 +201,28 @@
                                         Click="RunButton_OnClick"
                                         AutomationProperties.Name="立即抓取壁纸" />
 
-                                <TextBlock Grid.Row="1" Grid.Column="0" Text="下一次关键词" Style="{StaticResource FieldLabelStyle}" />
+                                <CheckBox x:Name="RotateOnStartupBox"
+                                          Grid.Row="1"
+                                          Grid.ColumnSpan="4"
+                                          Content="启动时轮换（仅在自动轮换关闭时生效）"
+                                          Margin="0,0,0,4" />
+
+                                <CheckBox x:Name="StartMinimizedBox"
+                                          Grid.Row="2"
+                                          Grid.ColumnSpan="4"
+                                          Content="启动时最小化到系统托盘"
+                                          Margin="0,0,0,4" />
+
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="下一次关键词" Style="{StaticResource FieldLabelStyle}" />
                                 <TextBox x:Name="NextSearchKeywordBox"
-                                         Grid.Row="1"
+                                         Grid.Row="3"
                                          Grid.Column="1"
                                          Grid.ColumnSpan="3"
                                          PlaceholderText="留空则继续使用关键词列表"
                                          Style="{StaticResource FormTextBoxStyle}" />
 
                                 <StackPanel x:Name="RotationCountdownPanel"
-                                            Grid.Row="2"
+                                            Grid.Row="4"
                                             Grid.ColumnSpan="4"
                                             Orientation="Horizontal"
                                             Spacing="8"
@@ -264,8 +278,20 @@
                                 BorderThickness="1"
                                 CornerRadius="9"
                                 Tapped="PreviewBorder_OnTapped"
-                                ToolTipService.ToolTip="点击查看原图"
-                                AutomationProperties.Name="当前壁纸预览，点击查看大图">
+                                ToolTipService.ToolTip="左键查看原图 · 右键复制图片"
+                                AutomationProperties.Name="当前壁纸预览，左键查看大图，右键复制图片">
+                            <Border.ContextFlyout>
+                                <MenuFlyout>
+                                    <MenuFlyoutItem x:Name="CopyPreviewImageMenuItem"
+                                                    Text="复制图片"
+                                                    IsEnabled="False"
+                                                    Click="CopyPreviewImageMenuItem_OnClick">
+                                        <MenuFlyoutItem.Icon>
+                                            <SymbolIcon Symbol="Copy" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                </MenuFlyout>
+                            </Border.ContextFlyout>
                             <Grid>
                                 <TextBlock x:Name="WallpaperEmptyText"
                                            Text="完成一次抓取后显示壁纸信息"

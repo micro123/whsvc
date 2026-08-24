@@ -13,5 +13,7 @@ public sealed class AppSettings
     public bool IncludeAnime { get; set; } = true;
     public bool IncludePeople { get; set; } = true;
     public bool ScheduleEnabled { get; set; } = true;
+    public bool RotateOnStartup { get; set; }
+    public bool StartMinimized { get; set; } = true;
     public int IntervalMinutes { get; set; } = 30;
 }
