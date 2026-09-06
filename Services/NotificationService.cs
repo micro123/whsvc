@@ -2,7 +2,6 @@ using System.Diagnostics;
 using Microsoft.UI.Dispatching;
 using Microsoft.Windows.AppNotifications;
 using Microsoft.Windows.AppNotifications.Builder;
-using Windows.ApplicationModel.DataTransfer;
 using WallhavenService.Models;
 
 namespace WallhavenService.Services;
@@ -75,18 +74,27 @@ public sealed class NotificationService : IDisposable
 
             if (action == "copy")
             {
-                _dispatcherQueue.TryEnqueue(() =>
-                {
-                    var package = new DataPackage();
-                    package.SetText(url);
-                    Clipboard.SetContent(package);
-                    Clipboard.Flush();
-                });
+                // Notification activation is raised outside the UI thread. The clipboard
+                // operation must run on the UI dispatcher, and exceptions from an
+                // enqueued callback are not caught by the outer try/catch.
+                _dispatcherQueue.TryEnqueue(() => CopyUrlToClipboardAsync(url));
             }
         }
         catch
         {
             // Notification activation must not terminate the background application.
+        }
+    }
+
+    private static async void CopyUrlToClipboardAsync(string url)
+    {
+        try
+        {
+            await ClipboardTextService.SetTextAsync(IntPtr.Zero, url);
+        }
+        catch
+        {
+            // Clipboard failures must never terminate the app from a notification action.
         }
     }
 
