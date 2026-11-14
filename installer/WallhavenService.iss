@@ -90,12 +90,11 @@ begin
       Process := Processes.ItemIndex(I);
       if IsInstalledApplication(Process) then
       begin
-        Log(Format('Stopping installed application PID %d: %s',
-          [Integer(Process.ProcessId), String(Process.ExecutablePath)]));
+        Log(Format('Stopping installed application PID %d: %s', [
+          Integer(Process.ProcessId), String(Process.ExecutablePath)]));
         ExitResult := Process.Terminate(0);
         if ExitResult <> 0 then
-          RaiseException(Format('无法结束旧程序（错误码 %d）。请从托盘退出程序后重试。',
-            [ExitResult]));
+          RaiseException(Format('无法结束旧程序（错误码 %d）。请从托盘退出程序后重试。', [ExitResult]));
       end;
     end;
 
