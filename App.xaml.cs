@@ -49,6 +49,7 @@ public partial class App : Application
 
     private void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
     {
+        AppDiagnostics.WriteException("Unhandled XAML exception", e.Exception);
         e.Handled = true;
         _mainWindow?.ReportUnhandledException(e.Exception);
     }

@@ -618,6 +618,7 @@ public sealed partial class MainWindow : Window
 
     private void ShowFromTray()
     {
+        AppDiagnostics.Write("Showing main window");
         AppWindow.Show();
         if (AppWindow.Presenter is OverlappedPresenter presenter)
             presenter.Restore();

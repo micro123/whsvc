@@ -68,6 +68,14 @@ dotnet run --project .\WallhavenService.csproj -c Debug -p:Platform=x64
 ```
 
 其中包含设置、当前壁纸缓存和下载文件。
+
+启动线程、窗口激活以及未处理的异常堆栈会记录到
+`%LOCALAPPDATA%\WallhavenService\diagnostics.log`，日志达到 1 MiB 时保留一份上次日志。
+原生组件直接终止进程时，还需结合 Windows 应用事件和崩溃转储排查。
+
+程序入口必须保持同步的 `[STAThread] void Main`。不要改为 `async Task Main`，
+否则编译器生成的实际入口不会携带 STA 标记，可能在 UI Automation 查询窗口时崩溃。
+单实例激活重定向在工作线程执行，并通过 COM 等待完成，保持主线程的 STA 模型。
 ## GitHub Actions 安装包
 
 项目中的 `.github/workflows/build-windows.yml` 会自动编译 Windows x64 self-contained 包，并生成两种 Artifacts：
