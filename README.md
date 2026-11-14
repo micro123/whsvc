@@ -85,4 +85,8 @@ dotnet run --project .\WallhavenService.csproj -c Debug -p:Platform=x64
 
 在安装向导的“附加选项”页面可以选择“开机时自动启动 Wallhaven 壁纸服务”。该选项使用当前用户的启动目录，不需要管理员权限。
 
+升级安装时，安装程序会关闭占用安装文件的旧进程（包括驻留托盘的程序），
+完成后可勾选“启动 Wallhaven 壁纸服务”重新运行。尚未保存的界面设置需要在升级前保存。
+安装日志默认保存在 `%TEMP%\Setup Log 日期*.txt`。
+
 触发 GitHub Actions 后，在仓库的 **Actions → Build Windows self-contained** 运行记录底部即可下载。

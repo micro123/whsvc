@@ -37,6 +37,11 @@ WizardStyle=modern
 SetupIconFile={#SourceDir}\Assets\App.ico
 UninstallDisplayIcon={app}\Assets\App.ico
 Uninstallable=yes
+; Closing the main window normally hides it to the tray. Force Restart Manager
+; shutdown during upgrades so the running background process releases its files.
+CloseApplications=force
+RestartApplications=no
+SetupLogging=yes
 
 [Languages]
 Name: "chinesesimplified"; MessagesFile: "{#LanguageFile}"
